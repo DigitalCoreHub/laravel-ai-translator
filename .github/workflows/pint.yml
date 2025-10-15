@@ -59,6 +59,7 @@ jobs:
         if: steps.pint.outcome == 'failure'
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.ACTIONS_PAT || secrets.GITHUB_TOKEN }}
           commit-message: "chore: apply Pint code style fixes"
           title: "🔧 Laravel Pint - Code Style Fixes"
           body: |
@@ -70,7 +71,6 @@ jobs:
           labels: "automation, code-style"
           delete-branch: true
           author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          token: ${{ secrets.GITHUB_TOKEN }}
           add-paths: |
             .
 
