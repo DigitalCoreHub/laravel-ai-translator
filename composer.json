@@ -1,39 +1,39 @@
 {
-    "name": "digitalcorehub/laravel-ai-translator",
-    "description": "Laravel package that translates missing language keys using OpenAI.",
-    "type": "library",
-    "license": "MIT",
-    "require": {
-        "php": "^8.3",
-        "illuminate/support": "^12.0",
-        "illuminate/console": "^12.0",
-        "illuminate/filesystem": "^12.0",
-        "openai-php/client": ">=0.10.0 <1.0.0"
-    },
-    "require-dev": {
-        "orchestra/testbench": "^9.0",
-        "pestphp/pest": "^2.0",
-        "pestphp/pest-plugin-laravel": "^2.0",
-        "mockery/mockery": "^1.6"
-    },
-    "autoload": {
-        "psr-4": {
-            "DigitalCoreHub\\LaravelAiTranslator\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "DigitalCoreHub\\LaravelAiTranslator\\Tests\\": "tests/"
-        }
-    },
-    "extra": {
-        "laravel": {
-            "providers": [
-                "DigitalCoreHub\\LaravelAiTranslator\\AiTranslatorServiceProvider"
-            ]
-        }
-    },
-    "scripts": {
-        "test": "vendor/bin/pest"
+  "name": "digitalcorehub/laravel-ai-translator",
+  "description": "Laravel package that translates missing language keys using OpenAI.",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": "^8.3",
+    "illuminate/support": "^11.0|^12.0",
+    "illuminate/console": "^11.0|^12.0",
+    "illuminate/filesystem": "^11.0|^12.0",
+    "openai-php/client": ">=0.10.0 <1.0.0"
+  },
+  "require-dev": {
+    "orchestra/testbench": "^8.0|^9.0",
+    "pestphp/pest": "^2.0",
+    "pestphp/pest-plugin-laravel": "^2.4",
+    "mockery/mockery": "^1.6"
+  },
+  "autoload": {
+    "psr-4": {
+      "DigitalCoreHub\\LaravelAiTranslator\\": "src/"
     }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "DigitalCoreHub\\LaravelAiTranslator\\Tests\\": "tests/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "DigitalCoreHub\\LaravelAiTranslator\\AiTranslatorServiceProvider"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "vendor/bin/pest"
+  }
 }
