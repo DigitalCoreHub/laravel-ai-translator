@@ -1,5 +1,5 @@
 {
-    "name": "codex/laravel-ai-translator",
+    "name": "digitalcorehub/laravel-ai-translator",
     "description": "Laravel package that translates missing language keys using OpenAI.",
     "type": "library",
     "license": "MIT",
@@ -18,18 +18,18 @@
     },
     "autoload": {
         "psr-4": {
-            "Codex\\LaravelAiTranslator\\": "src/"
+            "DigitalCoreHub\\LaravelAiTranslator\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Codex\\LaravelAiTranslator\\Tests\\": "tests/"
+            "DigitalCoreHub\\LaravelAiTranslator\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Codex\\LaravelAiTranslator\\AiTranslatorServiceProvider"
+                "DigitalCoreHub\\LaravelAiTranslator\\AiTranslatorServiceProvider"
             ]
         }
     },

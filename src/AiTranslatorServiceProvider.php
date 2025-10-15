@@ -1,11 +1,11 @@
 <?php
 
-namespace Codex\LaravelAiTranslator;
+namespace DigitalCoreHub\LaravelAiTranslator;
 
-use Codex\LaravelAiTranslator\Commands\TranslateCommand;
-use Codex\LaravelAiTranslator\Contracts\TranslationProvider;
-use Codex\LaravelAiTranslator\Providers\OpenAIProvider;
-use Codex\LaravelAiTranslator\Services\TranslationManager;
+use DigitalCoreHub\LaravelAiTranslator\Commands\TranslateCommand;
+use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
+use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAIProvider;
+use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
 use Illuminate\Support\ServiceProvider;
 
 /**

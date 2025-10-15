@@ -1,8 +1,8 @@
 <?php
 
-namespace Codex\LaravelAiTranslator\Services;
+namespace DigitalCoreHub\LaravelAiTranslator\Services;
 
-use Codex\LaravelAiTranslator\Contracts\TranslationProvider;
+use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;

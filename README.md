@@ -7,13 +7,13 @@ Laravel AI Translator, Laravel 12 ile uyumlu bir pakettir; uygulamanızın dil d
 ## Installation / Kurulum
 
 ```bash
-composer require codex/laravel-ai-translator
+composer require digitalcorehub/laravel-ai-translator
 ```
 
 Publish the configuration file to tweak the provider or model:
 
 ```bash
-php artisan vendor:publish --tag=config --provider="Codex\\LaravelAiTranslator\\AiTranslatorServiceProvider"
+php artisan vendor:publish --tag=config --provider="DigitalCoreHub\\LaravelAiTranslator\\AiTranslatorServiceProvider"
 ```
 
 Update your `.env` file with the OpenAI credentials:
@@ -28,7 +28,7 @@ OPENAI_MODEL=gpt-4o-mini
 Kurulumdan sonra yapılandırma dosyasını yayımlayarak sağlayıcı veya modeli özelleştirebilirsiniz:
 
 ```bash
-php artisan vendor:publish --tag=config --provider="Codex\\LaravelAiTranslator\\AiTranslatorServiceProvider"
+php artisan vendor:publish --tag=config --provider="DigitalCoreHub\\LaravelAiTranslator\\AiTranslatorServiceProvider"
 ```
 
 `.env` dosyanızı OpenAI kimlik bilgileriyle güncelleyin:

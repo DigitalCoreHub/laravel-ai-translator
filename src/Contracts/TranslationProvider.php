@@ -1,6 +1,6 @@
 <?php
 
-namespace Codex\LaravelAiTranslator\Contracts;
+namespace DigitalCoreHub\LaravelAiTranslator\Contracts;
 
 interface TranslationProvider
 {

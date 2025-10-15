@@ -1,8 +1,8 @@
 <?php
 
-namespace Codex\LaravelAiTranslator\Commands;
+namespace DigitalCoreHub\LaravelAiTranslator\Commands;
 
-use Codex\LaravelAiTranslator\Services\TranslationManager;
+use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
 use Illuminate\Console\Command;
 
 /**

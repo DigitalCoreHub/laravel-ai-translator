@@ -1,6 +1,6 @@
 <?php
 
-use Codex\LaravelAiTranslator\Tests\Fakes\FakeProvider;
+use DigitalCoreHub\LaravelAiTranslator\Tests\Fakes\FakeProvider;
 use Illuminate\Filesystem\Filesystem;
 
 beforeEach(function () {

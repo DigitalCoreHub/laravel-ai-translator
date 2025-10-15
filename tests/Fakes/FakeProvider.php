@@ -1,8 +1,8 @@
 <?php
 
-namespace Codex\LaravelAiTranslator\Tests\Fakes;
+namespace DigitalCoreHub\LaravelAiTranslator\Tests\Fakes;
 
-use Codex\LaravelAiTranslator\Contracts\TranslationProvider;
+use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 
 /**
  * Simple fake translation provider for tests.

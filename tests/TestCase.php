@@ -1,9 +1,9 @@
 <?php
 
-namespace Codex\LaravelAiTranslator\Tests;
+namespace DigitalCoreHub\LaravelAiTranslator\Tests;
 
-use Codex\LaravelAiTranslator\AiTranslatorServiceProvider;
-use Codex\LaravelAiTranslator\Tests\Fakes\FakeProvider;
+use DigitalCoreHub\LaravelAiTranslator\AiTranslatorServiceProvider;
+use DigitalCoreHub\LaravelAiTranslator\Tests\Fakes\FakeProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 /**

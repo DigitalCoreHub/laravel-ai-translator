@@ -1,8 +1,8 @@
 <?php
 
-namespace Codex\LaravelAiTranslator\Providers;
+namespace DigitalCoreHub\LaravelAiTranslator\Providers;
 
-use Codex\LaravelAiTranslator\Contracts\TranslationProvider;
+use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use OpenAI\Factory;
 use OpenAI\Responses\Chat\CreateResponse;
 use RuntimeException;
