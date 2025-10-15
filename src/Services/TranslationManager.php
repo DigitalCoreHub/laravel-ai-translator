@@ -340,7 +340,12 @@ class TranslationManager
     {
         $this->ensureDirectory(dirname($path));
 
-        $export = var_export($translations, true);
+        $export = str_replace(
+            ["array (", ")"],
+            ["[", "]"],
+            var_export($translations, true)
+        );
+
         $content = "<?php\n\nreturn {$export};\n";
 
         $this->filesystem->put($path, $content);

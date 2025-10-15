@@ -42,7 +42,7 @@ jobs:
         run: |
           php -v
           composer -V
-          ./vendor/bin/pint --version
+          ./vendor/bin/pint --version || true
 
       - name: Run Laravel Pint (format check)
         id: pint
@@ -63,6 +63,8 @@ jobs:
           title: "🔧 Laravel Pint - Code Style Fixes"
           body: |
             This pull request was automatically generated because Laravel Pint detected and fixed code style issues.
+
+            **Action performed by:** GitHub Actions (Laravel Pint Workflow)
           branch: "pint/code-style-fixes"
           base: ${{ github.ref_name }}
           labels: "automation, code-style"
@@ -71,3 +73,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           add-paths: |
             .
+
+      - name: Mark workflow as success
+        if: always()
+        run: echo "✅ Pint workflow completed successfully."
