@@ -4,6 +4,7 @@ namespace DigitalCoreHub\LaravelAiTranslator\Commands;
 
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Helper\ProgressBar;
 
 /**
  * Translate missing language keys via an artisan command.
@@ -37,11 +38,33 @@ class TranslateCommand extends Command
         $from = $this->argument('from');
         $to = $this->argument('to');
 
-        $this->info("Scanning language directories: {$from} -> {$to}");
+        $totalMissing = $this->manager->countMissing($from, $to);
 
-        $result = $this->manager->translate($from, $to, function (string $file, string $key, string $source) {
-            $this->line("Translating [{$file}] {$key}");
+        $this->info("{$from} -> {$to} çeviri işlemi başlatılıyor…");
+
+        $progressBar = null;
+        $currentStep = 0;
+
+        if ($totalMissing > 0) {
+            $progressBar = new ProgressBar($this->output, $totalMissing);
+            $progressBar->setFormat('%message%');
+            $progressBar->setOverwrite(false);
+        }
+
+        $result = $this->manager->translate($from, $to, function (string $file, string $key, string $source) use (&$currentStep, $progressBar) {
+            if ($progressBar instanceof ProgressBar) {
+                $currentStep++;
+                $progressBar->setMessage(sprintf('Çevriliyor (%d/%d)', $currentStep, $progressBar->getMaxSteps()));
+                $progressBar->advance();
+            }
         });
+
+        if ($progressBar instanceof ProgressBar) {
+            $progressBar->finish();
+            $this->newLine();
+        }
+
+        $this->info('✔ Çeviri işlemi tamamlandı!');
 
         $this->newLine();
         $this->table(

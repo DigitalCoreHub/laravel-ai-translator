@@ -78,6 +78,36 @@ class TranslationManager
     }
 
     /**
+     * Count the total number of missing translation keys between locales.
+     * Yereller arasında eksik çeviri anahtarlarının toplamını hesaplar.
+     */
+    public function countMissing(string $from, string $to): int
+    {
+        $total = 0;
+
+        $sourcePath = $this->langDirectory($from);
+
+        foreach ($this->gatherPhpFiles($sourcePath) as $relativeFile) {
+            $sourceFile = $sourcePath.'/'.$relativeFile;
+            $targetFile = $this->langDirectory($to).'/'.$relativeFile;
+
+            $source = $this->readPhp($sourceFile);
+            $target = $this->readPhp($targetFile);
+
+            $total += $this->countMissingFromArrays($source, $target);
+        }
+
+        if ($this->filesystem->exists($this->langJsonPath($from))) {
+            $source = $this->readJson($this->langJsonPath($from));
+            $target = $this->readJson($this->langJsonPath($to));
+
+            $total += $this->countMissingFromArrays($source, $target);
+        }
+
+        return $total;
+    }
+
+    /**
      * Translate the contents of a PHP language file.
      * Bir PHP dil dosyasının içeriğini çevirir.
      */
@@ -163,6 +193,18 @@ class TranslationManager
         }
 
         return [$missing, $translated, $updated];
+    }
+
+    /**
+     * Count missing keys between two translation arrays.
+     * İki çeviri dizisi arasındaki eksik anahtarları sayar.
+     */
+    protected function countMissingFromArrays(array $source, array $target): int
+    {
+        $flatSource = $this->flatten($source);
+        $flatTarget = $this->flatten($target);
+
+        return count(array_diff_key($flatSource, $flatTarget));
     }
 
     /**
