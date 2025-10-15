@@ -1,0 +1,392 @@
+<?php
+
+namespace DigitalCoreHub\LaravelAiTranslator\Services;
+
+use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
+use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
+use Symfony\Component\Finder\Finder;
+
+/**
+ * Coordinate translation of missing locale keys across language files.
+ * Eksik dil anahtarlarının çevirisini dil dosyaları arasında koordine eder.
+ */
+class TranslationManager
+{
+    public function __construct(
+        protected TranslationProvider $provider,
+        protected Filesystem $filesystem,
+        protected string $basePath
+    ) {
+    }
+
+    /**
+     * Translate missing keys from one locale into another.
+     * Bir dildeki eksik anahtarları başka bir dile çevirir.
+     *
+     * @param  callable|null  $progress
+     * @return array{files: array<int, array{name: string, missing: int, translated: int}>, totals: array{missing: int, translated: int}}
+     */
+    public function translate(string $from, string $to, ?callable $progress = null): array
+    {
+        $files = [];
+        $totals = ['missing' => 0, 'translated' => 0];
+
+        $sourcePath = $this->langDirectory($from);
+
+        foreach ($this->gatherPhpFiles($sourcePath) as $relativeFile) {
+            $sourceFile = $sourcePath.'/'.$relativeFile;
+            $targetFile = $this->langDirectory($to).'/'.$relativeFile;
+
+            [$missingCount, $translatedCount] = $this->translatePhpFile(
+                $from,
+                $to,
+                $sourceFile,
+                $targetFile,
+                $progress
+            );
+
+            $files[] = [
+                'name' => $relativeFile,
+                'missing' => $missingCount,
+                'translated' => $translatedCount,
+            ];
+
+            $totals['missing'] += $missingCount;
+            $totals['translated'] += $translatedCount;
+        }
+
+        if ($this->filesystem->exists($this->langJsonPath($from))) {
+            [$missingCount, $translatedCount] = $this->translateJsonFile(
+                $from,
+                $to,
+                $this->langJsonPath($from),
+                $this->langJsonPath($to),
+                $progress
+            );
+
+            $files[] = [
+                'name' => basename($this->langJsonPath($from)),
+                'missing' => $missingCount,
+                'translated' => $translatedCount,
+            ];
+
+            $totals['missing'] += $missingCount;
+            $totals['translated'] += $translatedCount;
+        }
+
+        return compact('files', 'totals');
+    }
+
+    /**
+     * Translate the contents of a PHP language file.
+     * Bir PHP dil dosyasının içeriğini çevirir.
+     */
+    protected function translatePhpFile(string $from, string $to, string $sourceFile, string $targetFile, ?callable $progress = null): array
+    {
+        $source = $this->readPhp($sourceFile);
+        $target = $this->readPhp($targetFile);
+
+        [$missing, $translated, $updated] = $this->translateArray(
+            $from,
+            $to,
+            $source,
+            $target,
+            $progress,
+            basename($sourceFile)
+        );
+
+        if ($updated) {
+            $this->writePhp($targetFile, $target);
+        }
+
+        return [$missing, $translated];
+    }
+
+    /**
+     * Translate the contents of a JSON language file.
+     * Bir JSON dil dosyasının içeriğini çevirir.
+     */
+    protected function translateJsonFile(string $from, string $to, string $sourceFile, string $targetFile, ?callable $progress = null): array
+    {
+        $source = $this->readJson($sourceFile);
+        $target = $this->readJson($targetFile);
+
+        [$missing, $translated, $updated] = $this->translateArray(
+            $from,
+            $to,
+            $source,
+            $target,
+            $progress,
+            basename($sourceFile)
+        );
+
+        if ($updated) {
+            $this->writeJson($targetFile, $target);
+        }
+
+        return [$missing, $translated];
+    }
+
+    /**
+     * Compare flattened arrays and translate missing keys.
+     * Düzleştirilmiş dizileri karşılaştırır ve eksik anahtarları çevirir.
+     */
+    protected function translateArray(string $from, string $to, array $source, array &$target, ?callable $progress, string $fileName): array
+    {
+        $flatSource = $this->flatten($source);
+        $flatTarget = $this->flatten($target);
+
+        $missingKeys = array_diff_key($flatSource, $flatTarget);
+
+        $missing = count($missingKeys);
+        $translated = 0;
+        $updated = false;
+
+        foreach ($missingKeys as $key => $text) {
+            if ($progress) {
+                $progress($fileName, $key, $text);
+            }
+
+            [$normalizedText, $placeholders] = $this->maskPlaceholders($text);
+
+            $translatedText = $this->provider->translate($normalizedText, $from, $to);
+
+            $translation = $this->restorePlaceholders($translatedText, $placeholders, $normalizedText);
+
+            $flatTarget[$key] = $translation;
+            $translated++;
+            $updated = true;
+        }
+
+        if ($updated) {
+            $target = $this->expand($flatTarget);
+        }
+
+        return [$missing, $translated, $updated];
+    }
+
+    /**
+     * Flatten nested translation arrays into dot notation.
+     * İç içe geçmiş çeviri dizilerini nokta gösterimine dönüştürür.
+     */
+    protected function flatten(array $translations, string $prefix = ''): array
+    {
+        $results = [];
+
+        foreach ($translations as $key => $value) {
+            $fullKey = $prefix === '' ? $key : $prefix.'.'.$key;
+
+            if (is_array($value)) {
+                $results += $this->flatten($value, $fullKey);
+
+                continue;
+            }
+
+            $results[$fullKey] = $value;
+        }
+
+        return $results;
+    }
+
+    /**
+     * Expand dot notation arrays back into nested structures.
+     * Nokta gösterimindeki dizileri tekrar iç içe geçmiş yapıya dönüştürür.
+     */
+    protected function expand(array $translations): array
+    {
+        $results = [];
+
+        foreach ($translations as $key => $value) {
+            Arr::set($results, $key, $value);
+        }
+
+        return $results;
+    }
+
+    /**
+     * Gather PHP translation files from a directory.
+     * Bir dizindeki PHP çeviri dosyalarını listeler.
+     */
+    protected function gatherPhpFiles(string $path): array
+    {
+        if (! $this->filesystem->exists($path)) {
+            return [];
+        }
+
+        $finder = Finder::create()
+            ->files()
+            ->in($path)
+            ->name('*.php')
+            ->sortByName();
+
+        $relative = [];
+
+        foreach ($finder as $file) {
+            $pathname = $file->getRealPath();
+            $relative[] = ltrim(Str::after($pathname, rtrim($path, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR), DIRECTORY_SEPARATOR);
+        }
+
+        return $relative;
+    }
+
+    /**
+     * Build the directory path for a locale.
+     * Bir yerel için dizin yolunu oluşturur.
+     */
+    protected function langDirectory(string $locale): string
+    {
+        return rtrim($this->basePath, '/').'/resources/lang/'.$locale;
+    }
+
+    /**
+     * Build the JSON file path for a locale.
+     * Bir yerel için JSON dosya yolunu oluşturur.
+     */
+    protected function langJsonPath(string $locale): string
+    {
+        return rtrim($this->basePath, '/').'/resources/lang/'.$locale.'.json';
+    }
+
+    /**
+     * Read a JSON translation file.
+     * Bir JSON çeviri dosyasını okur.
+     */
+    protected function readJson(string $path): array
+    {
+        if (! $this->filesystem->exists($path)) {
+            return [];
+        }
+
+        return json_decode($this->filesystem->get($path), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Read a PHP translation file.
+     * Bir PHP çeviri dosyasını okur.
+     */
+    protected function readPhp(string $path): array
+    {
+        if (! $this->filesystem->exists($path)) {
+            return [];
+        }
+
+        /** @var array $translations */
+        $translations = $this->filesystem->getRequire($path);
+
+        return $translations;
+    }
+
+    /**
+     * Persist translations to a JSON file.
+     * Çevirileri bir JSON dosyasına yazar.
+     */
+    protected function writeJson(string $path, array $translations): void
+    {
+        $this->ensureDirectory(dirname($path));
+
+        $this->filesystem->put(
+            $path,
+            json_encode($translations, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).PHP_EOL
+        );
+    }
+
+    /**
+     * Persist translations to a PHP file.
+     * Çevirileri bir PHP dosyasına yazar.
+     */
+    protected function writePhp(string $path, array $translations): void
+    {
+        $this->ensureDirectory(dirname($path));
+
+        $export = var_export($translations, true);
+        $content = "<?php\n\nreturn {$export};\n";
+
+        $this->filesystem->put($path, $content);
+    }
+
+    /**
+     * Ensure the target directory exists before writing.
+     * Yazmadan önce hedef dizinin var olduğundan emin olur.
+     */
+    protected function ensureDirectory(string $path): void
+    {
+        if (! $this->filesystem->isDirectory($path)) {
+            $this->filesystem->makeDirectory($path, 0755, true);
+        }
+    }
+
+    /**
+     * Replace HTML tags and placeholders with safe tokens before translation.
+     * Çeviri öncesi HTML etiketlerini ve yer tutucuları güvenli belirteçlerle değiştirir.
+     *
+     * @return array{0: string, 1: array<string, string>}
+     */
+    protected function maskPlaceholders(string $text): array
+    {
+        $placeholders = [];
+        $normalized = $text;
+
+        foreach ($this->placeholderPatterns() as $pattern => $prefix) {
+            $normalized = preg_replace_callback($pattern, function (array $matches) use (&$placeholders, $prefix) {
+                $token = sprintf('__AI_%s_%d__', strtoupper($prefix), count($placeholders));
+                $placeholders[$token] = $matches[0];
+
+                return $token;
+            }, $normalized);
+        }
+
+        return [$normalized, $placeholders];
+    }
+
+    /**
+     * Restore the original placeholders after translation.
+     * Çeviri sonrasında orijinal yer tutucuları geri yükler.
+     */
+    protected function restorePlaceholders(string $translated, array $placeholders, string $normalized): string
+    {
+        if ($placeholders === []) {
+            return $translated;
+        }
+
+        if ($this->tokensMissing($translated, array_keys($placeholders))) {
+            return strtr($normalized, $placeholders);
+        }
+
+        return strtr($translated, $placeholders);
+    }
+
+    /**
+     * Determine if any placeholder tokens were lost during translation.
+     * Çeviri sırasında herhangi bir yer tutucu belirteci kayboldu mu kontrol eder.
+     *
+     * @param  array<int, string>  $tokens
+     */
+    protected function tokensMissing(string $text, array $tokens): bool
+    {
+        foreach ($tokens as $token) {
+            if (! str_contains($text, $token)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Regex patterns that should be protected during translation.
+     * Çeviri sırasında korunması gereken regex desenlerini döndürür.
+     *
+     * @return array<string, string>
+     */
+    protected function placeholderPatterns(): array
+    {
+        return [
+            '/<[^>]+>/' => 'html',
+            '/:\w+/' => 'placeholder',
+            '/{{\s*[^}]+\s*}}/' => 'blade',
+            '/%(?:\d+\$)?[a-zA-Z]/' => 'format',
+        ];
+    }
+}

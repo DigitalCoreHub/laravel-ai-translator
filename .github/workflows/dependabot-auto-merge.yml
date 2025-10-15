@@ -1,0 +1,85 @@
+name: Auto Merge Dependabot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure Dependabot PR conventions
+        uses: actions/github-script@v7
+        env:
+          DEP_NAME: ${{ steps.metadata.outputs.dependency-names }}
+          OLD_VERSION: ${{ steps.metadata.outputs.previous-version }}
+          NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const dependencyNames = (process.env.DEP_NAME || '').split(',').map((name) => name.trim()).filter(Boolean);
+            const dependencyName = dependencyNames[0] || 'dependency';
+            const oldVersion = process.env.OLD_VERSION || 'unknown';
+            const newVersion = process.env.NEW_VERSION || 'unknown';
+            const desiredTitle = `\uD83D\uDD04 Dependency Update — ${dependencyName}: ${oldVersion} → ${newVersion}`;
+
+            if (pr.title !== desiredTitle) {
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pr.number,
+                title: desiredTitle,
+              });
+            }
+
+            const note = 'Automatically created by Dependabot 🤖';
+            const body = pr.body || '';
+            const trimmedBody = body.trim();
+            const nextBody = trimmedBody.includes(note)
+              ? body
+              : `${trimmedBody}\n\n${note}`.trim();
+
+            if (nextBody !== body) {
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pr.number,
+                body: nextBody,
+              });
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: pr.number,
+              labels: ['dependencies'],
+            });
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run Laravel Pint (format check)
+        run: ./vendor/bin/pint --test
+
+      - name: Run Tests
+        run: composer test
+
+      - name: Auto merge Dependabot PRs
+        if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        uses: ahmadnassri/action-dependabot-auto-merge@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-method: squash
+          target: minor
