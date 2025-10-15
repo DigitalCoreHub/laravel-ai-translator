@@ -31,6 +31,7 @@ class AiTranslatorServiceProvider extends ServiceProvider
                 provider: $app->make(TranslationProvider::class),
                 filesystem: $app['files'],
                 basePath: $app->basePath(),
+                autoCreateMissingFiles: $app['config']->get('ai-translator.auto_create_missing_files', true),
             );
         });
 
