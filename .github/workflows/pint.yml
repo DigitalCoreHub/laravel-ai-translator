@@ -32,4 +32,17 @@ jobs:
           fi
 
       - name: Run Laravel Pint (format check)
+        id: pint
+        continue-on-error: true
         run: ./vendor/bin/pint --test
+
+      - name: Auto fix and commit if Pint fails
+        if: steps.pint.outcome == 'failure'
+        run: |
+          echo "❌ Kod biçimi hataları bulundu. Otomatik düzeltme başlatılıyor..."
+          ./vendor/bin/pint
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "chore: auto-fix Pint code style issues [skip ci]" || echo "⚠️ Değişiklik yok, commit atlanıyor."
+          git push
