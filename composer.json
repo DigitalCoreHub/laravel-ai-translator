@@ -1,0 +1,39 @@
+{
+    "name": "codex/laravel-ai-translator",
+    "description": "Laravel package that translates missing language keys using OpenAI.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "illuminate/support": "^12.0",
+        "illuminate/console": "^12.0",
+        "illuminate/filesystem": "^12.0",
+        "openai-php/client": "^0.10.7"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0",
+        "pestphp/pest": "^2.0",
+        "pestphp/pest-plugin-laravel": "^2.0",
+        "mockery/mockery": "^1.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Codex\\LaravelAiTranslator\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Codex\\LaravelAiTranslator\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Codex\\LaravelAiTranslator\\AiTranslatorServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest"
+    }
+}
