@@ -59,3 +59,7 @@ vendor/bin/pest
 ```
 
 Paketi Pest ile test etmek için yukarıdaki komutu kullanabilirsiniz.
+
+> This package uses **Dependabot** for automatic dependency updates  
+> and **Laravel Pint** for code style consistency.  
+> Maintained with ❤️ by [Digital Core Hub](https://github.com/digitalcorehub)
