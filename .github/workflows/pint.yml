@@ -2,20 +2,15 @@ name: Laravel Pint
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
   pull_request:
 
 jobs:
   pint:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --no-progress
-      - name: Run Pint
-        run: ./vendor/bin/pint --test
     name: Run Laravel Pint
-    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -31,11 +26,10 @@ jobs:
       - name: Install dependencies
         run: |
           composer install --no-interaction --prefer-dist --no-progress
-          # Eğer Pint projede yoksa yükle
+          # Eğer Pint yüklü değilse, dev bağımlılık olarak yükle
           if [ ! -f ./vendor/bin/pint ]; then
             composer require laravel/pint --dev
           fi
 
       - name: Run Laravel Pint (format check)
-        run: |
-          ./vendor/bin/pint --test
+        run: ./vendor/bin/pint --test
