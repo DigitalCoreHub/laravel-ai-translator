@@ -27,13 +27,22 @@ jobs:
           coverage: none
           tools: composer
 
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
       - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Verify PHP & Composer
         run: |
-          composer install --no-interaction --prefer-dist --no-progress
-          # Eğer Pint yüklü değilse, dev bağımlılık olarak yükle
-          if [ ! -f ./vendor/bin/pint ]; then
-            composer require laravel/pint --dev
-          fi
+          php -v
+          composer -V
+          ./vendor/bin/pint --version
 
       - name: Run Laravel Pint (format check)
         id: pint
@@ -54,8 +63,6 @@ jobs:
           title: "🔧 Laravel Pint - Code Style Fixes"
           body: |
             This pull request was automatically generated because Laravel Pint detected and fixed code style issues.
-
-            **Action performed by:** GitHub Actions (Laravel Pint Workflow)
           branch: "pint/code-style-fixes"
           base: ${{ github.ref_name }}
           labels: "automation, code-style"
