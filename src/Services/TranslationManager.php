@@ -277,7 +277,7 @@ class TranslationManager
      */
     protected function langDirectory(string $locale): string
     {
-        return rtrim($this->basePath, '/').'/resources/lang/'.$locale;
+        return rtrim($this->basePath, '/').'/lang/'.$locale;
     }
 
     /**
