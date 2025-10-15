@@ -14,11 +14,16 @@ use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
  */
 class TranslationManager
 {
+    protected string $languageRoot;
+
     public function __construct(
         protected TranslationProvider $provider,
         protected Filesystem $filesystem,
-        protected string $basePath
-    ) {}
+        protected string $basePath,
+        protected bool $autoCreateMissingFiles = true
+    ) {
+        $this->languageRoot = $this->resolveLanguageRoot($basePath);
+    }
 
     /**
      * Translate missing keys from one locale into another.
@@ -26,10 +31,11 @@ class TranslationManager
      *
      * @return array{files: array<int, array{name: string, missing: int, translated: int}>, totals: array{missing: int, translated: int}}
      */
-    public function translate(string $from, string $to, ?callable $progress = null): array
+    public function translate(string $from, string $to, ?callable $progress = null, bool $dryRun = false, bool $force = false): array
     {
         $files = [];
         $totals = ['missing' => 0, 'translated' => 0];
+        $previews = [];
 
         $sourcePath = $this->langDirectory($from);
 
@@ -37,12 +43,14 @@ class TranslationManager
             $sourceFile = $sourcePath.'/'.$relativeFile;
             $targetFile = $this->langDirectory($to).'/'.$relativeFile;
 
-            [$missingCount, $translatedCount] = $this->translatePhpFile(
+            [$missingCount, $translatedCount, $preview] = $this->translatePhpFile(
                 $from,
                 $to,
                 $sourceFile,
                 $targetFile,
-                $progress
+                $progress,
+                $dryRun,
+                $force
             );
 
             $files[] = [
@@ -53,35 +61,49 @@ class TranslationManager
 
             $totals['missing'] += $missingCount;
             $totals['translated'] += $translatedCount;
+
+            if ($preview !== []) {
+                $previews['lang/'.$to.'/'.$relativeFile] = $preview;
+            }
         }
 
-        if ($this->filesystem->exists($this->langJsonPath($from))) {
-            [$missingCount, $translatedCount] = $this->translateJsonFile(
+        $sourceJson = $this->langJsonPath($from);
+
+        if ($this->filesystem->exists($sourceJson)) {
+            $targetJson = $this->langJsonPath($to);
+
+            [$missingCount, $translatedCount, $preview] = $this->translateJsonFile(
                 $from,
                 $to,
-                $this->langJsonPath($from),
-                $this->langJsonPath($to),
-                $progress
+                $sourceJson,
+                $targetJson,
+                $progress,
+                $dryRun,
+                $force
             );
 
             $files[] = [
-                'name' => basename($this->langJsonPath($from)),
+                'name' => basename($sourceJson),
                 'missing' => $missingCount,
                 'translated' => $translatedCount,
             ];
 
             $totals['missing'] += $missingCount;
             $totals['translated'] += $translatedCount;
+
+            if ($preview !== []) {
+                $previews['lang/'.$to.'.json'] = $preview;
+            }
         }
 
-        return compact('files', 'totals');
+        return compact('files', 'totals', 'previews');
     }
 
     /**
      * Count the total number of missing translation keys between locales.
      * Yereller arasında eksik çeviri anahtarlarının toplamını hesaplar.
      */
-    public function countMissing(string $from, string $to): int
+    public function countMissing(string $from, string $to, bool $force = false): int
     {
         $total = 0;
 
@@ -89,16 +111,31 @@ class TranslationManager
 
         foreach ($this->gatherPhpFiles($sourcePath) as $relativeFile) {
             $sourceFile = $sourcePath.'/'.$relativeFile;
-            $targetFile = $this->langDirectory($to).'/'.$relativeFile;
-
             $source = $this->readPhp($sourceFile);
+
+            if ($force) {
+                $total += $this->countTotalKeys($source);
+
+                continue;
+            }
+
+            $targetFile = $this->langDirectory($to).'/'.$relativeFile;
             $target = $this->readPhp($targetFile);
 
             $total += $this->countMissingFromArrays($source, $target);
         }
 
-        if ($this->filesystem->exists($this->langJsonPath($from))) {
-            $source = $this->readJson($this->langJsonPath($from));
+        $sourceJson = $this->langJsonPath($from);
+
+        if ($this->filesystem->exists($sourceJson)) {
+            $source = $this->readJson($sourceJson);
+
+            if ($force) {
+                $total += $this->countTotalKeys($source);
+
+                return $total;
+            }
+
             $target = $this->readJson($this->langJsonPath($to));
 
             $total += $this->countMissingFromArrays($source, $target);
@@ -111,57 +148,90 @@ class TranslationManager
      * Translate the contents of a PHP language file.
      * Bir PHP dil dosyasının içeriğini çevirir.
      */
-    protected function translatePhpFile(string $from, string $to, string $sourceFile, string $targetFile, ?callable $progress = null): array
+    protected function translatePhpFile(
+        string $from,
+        string $to,
+        string $sourceFile,
+        string $targetFile,
+        ?callable $progress = null,
+        bool $dryRun = false,
+        bool $force = false
+    ): array
     {
         $source = $this->readPhp($sourceFile);
         $target = $this->readPhp($targetFile);
 
-        [$missing, $translated, $updated] = $this->translateArray(
+        [$missing, $translated, $updated, $preview] = $this->translateArray(
             $from,
             $to,
             $source,
             $target,
             $progress,
-            basename($sourceFile)
+            basename($sourceFile),
+            $dryRun,
+            $force
         );
 
         if ($updated) {
             $this->writePhp($targetFile, $target);
+        } else {
+            $this->initializeTargetFile($targetFile, 'php', $dryRun);
         }
 
-        return [$missing, $translated];
+        return [$missing, $translated, $preview];
     }
 
     /**
      * Translate the contents of a JSON language file.
      * Bir JSON dil dosyasının içeriğini çevirir.
      */
-    protected function translateJsonFile(string $from, string $to, string $sourceFile, string $targetFile, ?callable $progress = null): array
+    protected function translateJsonFile(
+        string $from,
+        string $to,
+        string $sourceFile,
+        string $targetFile,
+        ?callable $progress = null,
+        bool $dryRun = false,
+        bool $force = false
+    ): array
     {
         $source = $this->readJson($sourceFile);
         $target = $this->readJson($targetFile);
 
-        [$missing, $translated, $updated] = $this->translateArray(
+        [$missing, $translated, $updated, $preview] = $this->translateArray(
             $from,
             $to,
             $source,
             $target,
             $progress,
-            basename($sourceFile)
+            basename($sourceFile),
+            $dryRun,
+            $force
         );
 
         if ($updated) {
             $this->writeJson($targetFile, $target);
+        } else {
+            $this->initializeTargetFile($targetFile, 'json', $dryRun);
         }
 
-        return [$missing, $translated];
+        return [$missing, $translated, $preview];
     }
 
     /**
      * Compare flattened arrays and translate missing keys.
      * Düzleştirilmiş dizileri karşılaştırır ve eksik anahtarları çevirir.
      */
-    protected function translateArray(string $from, string $to, array $source, array &$target, ?callable $progress, string $fileName): array
+    protected function translateArray(
+        string $from,
+        string $to,
+        array $source,
+        array &$target,
+        ?callable $progress,
+        string $fileName,
+        bool $dryRun,
+        bool $force
+    ): array
     {
         $flatSource = $this->flatten($source);
         $flatTarget = $this->flatten($target);
@@ -171,8 +241,11 @@ class TranslationManager
         $missing = count($missingKeys);
         $translated = 0;
         $updated = false;
+        $preview = [];
 
-        foreach ($missingKeys as $key => $text) {
+        $keysToTranslate = $force ? $flatSource : $missingKeys;
+
+        foreach ($keysToTranslate as $key => $text) {
             if ($progress) {
                 $progress($fileName, $key, $text);
             }
@@ -183,16 +256,21 @@ class TranslationManager
 
             $translation = $this->restorePlaceholders($translatedText, $placeholders, $normalizedText);
 
-            $flatTarget[$key] = $translation;
+            $preview[$key] = $translation;
+
+            if (! $dryRun) {
+                $flatTarget[$key] = $translation;
+                $updated = true;
+            }
+
             $translated++;
-            $updated = true;
         }
 
         if ($updated) {
             $target = $this->expand($flatTarget);
         }
 
-        return [$missing, $translated, $updated];
+        return [$missing, $translated, $updated, $preview];
     }
 
     /**
@@ -205,6 +283,15 @@ class TranslationManager
         $flatTarget = $this->flatten($target);
 
         return count(array_diff_key($flatSource, $flatTarget));
+    }
+
+    /**
+     * Count all translation keys in the given array.
+     * Verilen dizideki tüm çeviri anahtarlarını sayar.
+     */
+    protected function countTotalKeys(array $translations): int
+    {
+        return count($this->flatten($translations));
     }
 
     /**
@@ -272,12 +359,33 @@ class TranslationManager
     }
 
     /**
+     * Determine the base language directory to operate on.
+     * Kullanılacak temel dil dizinini belirler.
+     */
+    protected function resolveLanguageRoot(string $basePath): string
+    {
+        $normalized = rtrim($basePath, '/');
+        $preferred = $normalized.'/lang';
+        $legacy = $normalized.'/resources/lang';
+
+        if ($this->filesystem->isDirectory($preferred)) {
+            return $preferred;
+        }
+
+        if ($this->filesystem->isDirectory($legacy)) {
+            return $legacy;
+        }
+
+        return $preferred;
+    }
+
+    /**
      * Build the directory path for a locale.
      * Bir yerel için dizin yolunu oluşturur.
      */
     protected function langDirectory(string $locale): string
     {
-        return rtrim($this->basePath, '/').'/lang/'.$locale;
+        return rtrim($this->languageRoot, '/').'/'.$locale;
     }
 
     /**
@@ -286,7 +394,7 @@ class TranslationManager
      */
     protected function langJsonPath(string $locale): string
     {
-        return rtrim($this->basePath, '/').'/resources/lang/'.$locale.'.json';
+        return rtrim($this->languageRoot, '/').'/'.$locale.'.json';
     }
 
     /**
@@ -347,6 +455,25 @@ class TranslationManager
         );
 
         $content = "<?php\n\nreturn {$export};\n";
+
+        $this->filesystem->put($path, $content);
+    }
+
+    /**
+     * Initialize a missing target file when auto creation is enabled.
+     * Otomatik oluşturma etkin olduğunda eksik hedef dosyayı hazırlar.
+     */
+    protected function initializeTargetFile(string $path, string $type, bool $dryRun): void
+    {
+        if ($dryRun || ! $this->autoCreateMissingFiles || $this->filesystem->exists($path)) {
+            return;
+        }
+
+        $this->ensureDirectory(dirname($path));
+
+        $content = $type === 'php'
+            ? "<?php\n\nreturn [];\n"
+            : "{}\n";
 
         $this->filesystem->put($path, $content);
     }
