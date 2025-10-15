@@ -7,14 +7,14 @@ Laravel AI Translator, Laravel 12 ile uyumlu bir pakettir; uygulamanızın dil d
 
 ## 🚀 Features / Özellikler
 
-✅ Detects and fills **missing translations** automatically
-✅ Supports both **PHP** and **JSON** language files
-✅ **Multiple target languages** in one command (`en → tr, fr, de`)
-✅ **Automatic file creation** if target files do not exist
-✅ **Dry-run** (`--dry`) and **Force-rewrite** (`--force`) CLI flags
-✅ **Progress bar** and summary table in CLI output
-✅ **Logs every translation** to `storage/logs/ai-translator.log`
-✅ Maintains **short array syntax** (`[]`) in PHP files
+- Detects and fills **missing translations** automatically
+- Supports both **PHP** and **JSON** language files
+- **Multiple target languages** in one command (`en → tr, fr, de`)
+- **Automatic file creation** if target files do not exist
+- **Dry-run** (`--dry`) and **Force-rewrite** (`--force`) CLI flags
+- **Progress bar** and summary table in CLI output
+- **Logs every translation** to `storage/logs/ai-translator.log`
+- Maintains **short array syntax** (`[]`) in PHP files
 
 ---
 
@@ -27,7 +27,7 @@ composer require digitalcorehub/laravel-ai-translator
 Publish the configuration file:
 
 ```bash
-php artisan vendor:publish --tag=config --provider="DigitalCoreHub\\LaravelAiTranslator\\AiTranslatorServiceProvider"
+php artisan vendor:publish --tag=config --provider="DigitalCoreHub\LaravelAiTranslator\AiTranslatorServiceProvider"
 ```
 
 Update your `.env` file with your OpenAI credentials:
@@ -64,6 +64,7 @@ return [
 ## 🧠 Usage / Kullanım
 
 ### Basic translation
+
 ```bash
 php artisan ai:translate en tr
 ```
@@ -72,22 +73,28 @@ Translates all missing keys from `lang/en` to `lang/tr`.
 `lang/en` dizinindeki eksik anahtarları `lang/tr` dosyalarına çevirir.
 
 ### Multiple languages / Çoklu dil
+
 ```bash
 php artisan ai:translate en tr fr de
 ```
+
 Translates English into Turkish, French and German sequentially.
 
 ### Dry-run mode
+
 ```bash
 php artisan ai:translate en tr --dry
 ```
+
 Shows missing keys and their AI translations without writing to files.
 Eksik anahtarları ve çevirilerini sadece terminalde gösterir, dosyaya yazmaz.
 
 ### Force-rewrite
+
 ```bash
 php artisan ai:translate en tr --force
 ```
+
 Re-translates and overwrites existing translations.
 Var olan çevirileri de günceller.
 
@@ -129,6 +136,7 @@ vendor/bin/pest
 ```
 
 Tests cover:
+
 - Multi-language translation
 - JSON file support
 - Dry-run and force flags
