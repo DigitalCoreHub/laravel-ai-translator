@@ -2,11 +2,11 @@
 
 namespace DigitalCoreHub\LaravelAiTranslator\Services;
 
+use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Symfony\Component\Finder\Finder;
-use Illuminate\Filesystem\Filesystem;
-use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 
 /**
  * Coordinate translation of missing locale keys across language files.
@@ -156,8 +156,7 @@ class TranslationManager
         ?callable $progress = null,
         bool $dryRun = false,
         bool $force = false
-    ): array
-    {
+    ): array {
         $source = $this->readPhp($sourceFile);
         $target = $this->readPhp($targetFile);
 
@@ -193,8 +192,7 @@ class TranslationManager
         ?callable $progress = null,
         bool $dryRun = false,
         bool $force = false
-    ): array
-    {
+    ): array {
         $source = $this->readJson($sourceFile);
         $target = $this->readJson($targetFile);
 
@@ -231,8 +229,7 @@ class TranslationManager
         string $fileName,
         bool $dryRun,
         bool $force
-    ): array
-    {
+    ): array {
         $flatSource = $this->flatten($source);
         $flatTarget = $this->flatten($target);
 
@@ -449,8 +446,8 @@ class TranslationManager
         $this->ensureDirectory(dirname($path));
 
         $export = str_replace(
-            ["array (", ")"],
-            ["[", "]"],
+            ['array (', ')'],
+            ['[', ']'],
             var_export($translations, true)
         );
 
