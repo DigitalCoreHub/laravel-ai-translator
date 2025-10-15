@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   pint:
@@ -39,13 +40,26 @@ jobs:
         continue-on-error: true
         run: ./vendor/bin/pint --test
 
-      - name: Auto fix and commit if Pint fails
+      - name: Create Pint Fix Pull Request
         if: steps.pint.outcome == 'failure'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: apply Pint code style fixes"
+          title: "🔧 Laravel Pint - Code Style Fixes"
+          body: |
+            This pull request was automatically generated because Laravel Pint detected code style issues and fixed them.
+            
+            **Action performed by:** GitHub Actions (Laravel Pint Workflow)
+          branch: "pint/code-style-fixes"
+          base: ${{ github.ref_name }}
+          labels: "automation, code-style"
+          delete-branch: true
+          author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          add-paths: |
+            .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "❌ Kod biçimi hataları bulundu. Otomatik düzeltme başlatılıyor..."
+          echo "❌ Kod biçimi hataları bulundu. Otomatik PR hazırlanıyor..."
           ./vendor/bin/pint
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "chore: auto-fix Pint code style issues [skip ci]" || echo "⚠️ Değişiklik yok, commit atlanıyor."
-          git push
