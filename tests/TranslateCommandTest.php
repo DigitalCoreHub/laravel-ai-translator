@@ -4,13 +4,13 @@ use DigitalCoreHub\LaravelAiTranslator\Tests\Fakes\FakeProvider;
 use Illuminate\Filesystem\Filesystem;
 
 beforeEach(function () {
-    $this->filesystem = new Filesystem();
+    $this->filesystem = new Filesystem;
     $this->langPath = base_path('resources/lang');
 
     $this->filesystem->deleteDirectory($this->langPath);
     $this->filesystem->makeDirectory($this->langPath, 0755, true);
 
-    $this->app->instance(FakeProvider::class, new FakeProvider());
+    $this->app->instance(FakeProvider::class, new FakeProvider);
 });
 
 it('translates missing keys across php and json files', function () {
@@ -48,7 +48,7 @@ it('translates missing keys across php and json files', function () {
 
 function seedLanguageFiles(): void
 {
-    $filesystem = new Filesystem();
+    $filesystem = new Filesystem;
     $filesystem->makeDirectory(base_path('resources/lang/en'), 0755, true, true);
     $filesystem->makeDirectory(base_path('resources/lang/tr'), 0755, true, true);
 

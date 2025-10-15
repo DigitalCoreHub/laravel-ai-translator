@@ -18,14 +18,12 @@ class TranslationManager
         protected TranslationProvider $provider,
         protected Filesystem $filesystem,
         protected string $basePath
-    ) {
-    }
+    ) {}
 
     /**
      * Translate missing keys from one locale into another.
      * Bir dildeki eksik anahtarları başka bir dile çevirir.
      *
-     * @param  callable|null  $progress
      * @return array{files: array<int, array{name: string, missing: int, translated: int}>, totals: array{missing: int, translated: int}}
      */
     public function translate(string $from, string $to, ?callable $progress = null): array

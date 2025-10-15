@@ -16,14 +16,13 @@ class OpenAIProvider implements TranslationProvider
     public function __construct(
         protected ?string $apiKey,
         protected string $model
-    ) {
-    }
+    ) {}
 
     /**
      * Translate the given text into the target language using OpenAI's Chat Completions API.
      * Verilen metni OpenAI Chat Completions API ile hedef dile çevirir.
      */
-    public function translate(string $text, string $from = null, string $to = null): string
+    public function translate(string $text, ?string $from = null, ?string $to = null): string
     {
         $systemPrompt = 'You are a professional translator. Preserve original HTML tags, Blade variables, tokens such as :count, '
             .'and double-underscore placeholders (e.g. __AI_HTML_0__) exactly as provided.';
@@ -53,7 +52,7 @@ class OpenAIProvider implements TranslationProvider
      */
     protected function client()
     {
-        $factory = new Factory();
+        $factory = new Factory;
 
         if ($this->apiKey) {
             $factory = $factory->withApiKey($this->apiKey);

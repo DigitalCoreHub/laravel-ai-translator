@@ -16,7 +16,7 @@ class FakeProvider implements TranslationProvider
      * Record translation calls and simulate an echo translation.
      * Çeviri çağrılarını kaydeder ve taklit bir çeviri döndürür.
      */
-    public function translate(string $text, string $from = null, string $to = null): string
+    public function translate(string $text, ?string $from = null, ?string $to = null): string
     {
         $this->calls[] = compact('text', 'from', 'to');
 
