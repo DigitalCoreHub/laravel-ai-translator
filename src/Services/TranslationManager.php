@@ -200,6 +200,382 @@ class TranslationManager
     }
 
     /**
+     * Inspect language files and return missing translation entries.
+     * Dil dosyalarını inceleyerek eksik çeviri kayıtlarını döndürür.
+     *
+     * @return array{files: array<int, array{name: string, entries: array<int, array{key: string, source: string, target: string|null, status: string}>, missing: int, total: int, type: string}>, totals: array{files: int, missing: int}}
+     */
+    public function inspectMissing(string $from, string $to): array
+    {
+        $files = [];
+        $totals = ['files' => 0, 'missing' => 0];
+
+        foreach ($this->paths as $root) {
+            $sourceDirectory = rtrim($root, '/').'/'.$from;
+            $targetDirectory = rtrim($root, '/').'/'.$to;
+
+            foreach ($this->gatherPhpFiles($sourceDirectory) as $relativeFile) {
+                $sourceFile = $sourceDirectory.'/'.$relativeFile;
+                $targetFile = $targetDirectory.'/'.$relativeFile;
+
+                $payload = $this->inspectFile($sourceFile, $targetFile, 'php');
+
+                if ($payload['entries'] === []) {
+                    continue;
+                }
+
+                $files[] = $payload;
+                $totals['files']++;
+                $totals['missing'] += $payload['missing'];
+            }
+
+            $sourceJson = $sourceDirectory.'.json';
+
+            if ($this->filesystem->exists($sourceJson)) {
+                $targetJson = $targetDirectory.'.json';
+                $payload = $this->inspectFile($sourceJson, $targetJson, 'json');
+
+                if ($payload['entries'] !== []) {
+                    $files[] = $payload;
+                    $totals['files']++;
+                    $totals['missing'] += $payload['missing'];
+                }
+            }
+        }
+
+        usort($files, static fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
+
+        return compact('files', 'totals');
+    }
+
+    /**
+     * Gather available locales by inspecting registered paths.
+     * Kayıtlı dizinleri inceleyerek mevcut yerelleri toplar.
+     *
+     * @return array<int, string>
+     */
+    public function availableLocales(): array
+    {
+        $locales = [];
+
+        foreach ($this->paths as $root) {
+            if (! $this->filesystem->exists($root)) {
+                continue;
+            }
+
+            foreach ($this->filesystem->directories($root) as $directory) {
+                $locales[] = basename($directory);
+            }
+
+            foreach ($this->filesystem->files($root) as $file) {
+                if ($file->getExtension() === 'json') {
+                    $locales[] = $file->getBasename('.json');
+                }
+            }
+        }
+
+        $locales = array_values(array_unique($locales));
+        sort($locales);
+
+        return $locales;
+    }
+
+    /**
+     * Translate a specific file and persist changes immediately.
+     * Belirli bir dosyayı çevirir ve değişiklikleri kalıcı olarak yazar.
+     *
+     * @return array{path: string, missing: int, translated: int, preview: array<string, string>, stats: array<string, mixed>}
+     */
+    public function translateFile(string $from, string $to, string $relativePath, array $options = []): array
+    {
+        $providerOverride = $options['provider'] ?? null;
+        $force = (bool) ($options['force'] ?? false);
+        $providerOrder = $this->resolveProviderOrder($providerOverride);
+
+        [$sourceFile, $targetFile, $type] = $this->resolveSourceAndTarget($from, $to, $relativePath);
+
+        if ($type === 'json') {
+            $source = $this->filesystem->exists($sourceFile) ? $this->readJson($sourceFile) : [];
+            $target = $this->filesystem->exists($targetFile) ? $this->readJson($targetFile) : [];
+        } else {
+            $source = $this->filesystem->exists($sourceFile) ? $this->readPhp($sourceFile) : [];
+            $target = $this->filesystem->exists($targetFile) ? $this->readPhp($targetFile) : [];
+        }
+
+        [$missing, $translated, $updated, $preview, $reviews, $stats] = $this->translateArray(
+            from: $from,
+            to: $to,
+            source: $source,
+            target: $target,
+            progress: $options['progress'] ?? null,
+            fileName: basename($targetFile),
+            dryRun: false,
+            force: $force,
+            providerOrder: $providerOrder
+        );
+
+        if ($type === 'json') {
+            if ($updated) {
+                $this->writeJson($targetFile, $target);
+            } else {
+                $this->initializeTargetFile($targetFile, 'json', false);
+            }
+        } else {
+            if ($updated) {
+                $this->writePhp($targetFile, $target);
+            } else {
+                $this->initializeTargetFile($targetFile, 'php', false);
+            }
+        }
+
+        $relative = $this->relativePath($targetFile);
+
+        return [
+            'path' => $relative,
+            'missing' => $missing,
+            'translated' => $translated,
+            'preview' => $preview,
+            'reviews' => $reviews,
+            'stats' => $stats,
+        ];
+    }
+
+    /**
+     * Translate a single key within a file.
+     * Bir dosya içindeki tek anahtarı çevirir.
+     *
+     * @return array{key: string, translation: string, provider: string, cache_hit: bool, duration: float}
+     */
+    public function translateEntry(
+        string $from,
+        string $to,
+        string $relativePath,
+        string $key,
+        array $options = []
+    ): array {
+        $providerOrder = $this->resolveProviderOrder($options['provider'] ?? null);
+        $force = (bool) ($options['force'] ?? false);
+
+        [$sourceFile, $targetFile, $type] = $this->resolveSourceAndTarget($from, $to, $relativePath);
+
+        $source = $type === 'json'
+            ? ($this->filesystem->exists($sourceFile) ? $this->readJson($sourceFile) : [])
+            : ($this->filesystem->exists($sourceFile) ? $this->readPhp($sourceFile) : []);
+
+        $target = $type === 'json'
+            ? ($this->filesystem->exists($targetFile) ? $this->readJson($targetFile) : [])
+            : ($this->filesystem->exists($targetFile) ? $this->readPhp($targetFile) : []);
+
+        $flatSource = $this->flatten($source);
+        $flatTarget = $this->flatten($target);
+
+        if (! array_key_exists($key, $flatSource)) {
+            throw new RuntimeException("Source key [{$key}] not found for {$relativePath}.");
+        }
+
+        if (! $force && array_key_exists($key, $flatTarget) && $flatTarget[$key] !== null && $flatTarget[$key] !== '') {
+            return [
+                'key' => $key,
+                'translation' => $flatTarget[$key],
+                'provider' => 'existing',
+                'cache_hit' => true,
+                'duration' => 0.0,
+            ];
+        }
+
+        $result = $this->performTranslation($flatSource[$key], $from, $to, $providerOrder);
+
+        $flatTarget[$key] = $result['translation'];
+        $expanded = $this->expand($flatTarget);
+
+        if ($type === 'json') {
+            $this->writeJson($targetFile, $expanded);
+        } else {
+            $this->writePhp($targetFile, $expanded);
+        }
+
+        return ['key' => $key] + $result;
+    }
+
+    /**
+     * Persist a manual translation value for the given locale.
+     * Belirtilen yerel için manuel çeviri değerini kaydeder.
+     */
+    public function updateTranslationEntry(string $locale, string $relativePath, string $key, string $value): void
+    {
+        [$sourceFile, $targetFile, $type] = $this->resolveSourceAndTarget($locale, $locale, $relativePath);
+
+        $target = $type === 'json'
+            ? ($this->filesystem->exists($targetFile) ? $this->readJson($targetFile) : [])
+            : ($this->filesystem->exists($targetFile) ? $this->readPhp($targetFile) : []);
+
+        $flat = $this->flatten($target);
+        $flat[$key] = $value;
+        $expanded = $this->expand($flat);
+
+        if ($type === 'json') {
+            $this->writeJson($targetFile, $expanded);
+        } else {
+            $this->writePhp($targetFile, $expanded);
+        }
+    }
+
+    /**
+     * Retrieve all translation entries for the selected file pair.
+     * Seçilen dosya çifti için tüm çeviri kayıtlarını getirir.
+     *
+     * @return array<int, array{key: string, source: string, target: string|null}>
+     */
+    public function getFileEntries(string $from, string $to, string $relativePath): array
+    {
+        [$sourceFile, $targetFile, $type] = $this->resolveSourceAndTarget($from, $to, $relativePath);
+
+        $source = $type === 'json'
+            ? ($this->filesystem->exists($sourceFile) ? $this->readJson($sourceFile) : [])
+            : ($this->filesystem->exists($sourceFile) ? $this->readPhp($sourceFile) : []);
+
+        $target = $type === 'json'
+            ? ($this->filesystem->exists($targetFile) ? $this->readJson($targetFile) : [])
+            : ($this->filesystem->exists($targetFile) ? $this->readPhp($targetFile) : []);
+
+        $flatSource = $this->flatten($source);
+        $flatTarget = $this->flatten($target);
+
+        $entries = [];
+
+        foreach ($flatSource as $key => $sourceValue) {
+            $entries[] = [
+                'key' => $key,
+                'source' => $sourceValue,
+                'target' => $flatTarget[$key] ?? null,
+            ];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Translate an arbitrary text snippet via the configured providers.
+     * Yapılandırılmış sağlayıcılar üzerinden serbest bir metni çevirir.
+     *
+     * @return array{translation: string, provider: string, cache_hit: bool, duration: float}
+     */
+    public function translateText(string $text, string $from, string $to, ?string $provider = null): array
+    {
+        $order = $this->resolveProviderOrder($provider);
+
+        return $this->performTranslation($text, $from, $to, $order);
+    }
+
+    /**
+     * Test connectivity to a specific provider.
+     * Belirli bir sağlayıcıya bağlantıyı test eder.
+     *
+     * @return array{ok: bool, message: string, provider?: string}
+     */
+    public function testProvider(string $provider): array
+    {
+        if (! isset($this->providers[$provider])) {
+            return ['ok' => false, 'message' => "Provider [{$provider}] is not registered."];
+        }
+
+        try {
+            $result = $this->performTranslation('ping', 'en', 'en', [$provider]);
+
+            return [
+                'ok' => true,
+                'message' => 'Connection OK',
+                'provider' => $result['provider'],
+            ];
+        } catch (Throwable $exception) {
+            return [
+                'ok' => false,
+                'message' => $exception->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Inspect a language file and prepare structured entry data.
+     * Bir dil dosyasını inceleyip yapılandırılmış veri döner.
+     *
+     * @return array{name: string, entries: array<int, array{key: string, source: string, target: string|null, status: string}>, missing: int, total: int, type: string}
+     */
+    protected function inspectFile(string $sourceFile, string $targetFile, string $type): array
+    {
+        $source = $this->filesystem->exists($sourceFile)
+            ? ($type === 'json' ? $this->readJson($sourceFile) : $this->readPhp($sourceFile))
+            : [];
+
+        $target = $this->filesystem->exists($targetFile)
+            ? ($type === 'json' ? $this->readJson($targetFile) : $this->readPhp($targetFile))
+            : [];
+
+        $flatSource = $this->flatten($source);
+        $flatTarget = $this->flatten($target);
+
+        $entries = [];
+        $missing = 0;
+
+        foreach ($flatSource as $key => $value) {
+            $targetValue = $flatTarget[$key] ?? null;
+            $status = $targetValue === null
+                ? 'missing'
+                : ($targetValue === '' ? 'empty' : 'translated');
+
+            if ($status === 'missing' || $status === 'empty') {
+                $missing++;
+            }
+
+            $entries[] = [
+                'key' => $key,
+                'source' => $value,
+                'target' => $targetValue,
+                'status' => $status,
+            ];
+        }
+
+        return [
+            'name' => $this->relativePath($targetFile),
+            'entries' => $entries,
+            'missing' => $missing,
+            'total' => count($entries),
+            'type' => $type,
+        ];
+    }
+
+    /**
+     * Resolve the absolute source/target file paths for the UI helpers.
+     * UI yardımcıları için mutlak kaynak/hedef dosya yollarını çözümler.
+     *
+     * @return array{0: string, 1: string, 2: string}
+     */
+    protected function resolveSourceAndTarget(string $from, string $to, string $relativePath): array
+    {
+        $relativePath = ltrim($relativePath, '/');
+        $targetFile = rtrim($this->basePath, '/').'/'.$relativePath;
+        $type = Str::endsWith($targetFile, '.json') ? 'json' : 'php';
+
+        if ($type === 'json') {
+            $needle = '/'.$to.'.json';
+            $replacement = '/'.$from.'.json';
+            $sourceFile = Str::replaceLast($needle, $replacement, $targetFile);
+
+            if ($sourceFile === $targetFile && $from !== $to) {
+                $sourceFile = Str::replaceLast('/'.$to.'.', '/'.$from.'.', $targetFile);
+            }
+        } else {
+            $sourceFile = Str::replaceFirst('/'.$to.'/', '/'.$from.'/', $targetFile);
+        }
+
+        if ($from === $to) {
+            $sourceFile = $targetFile;
+        }
+
+        return [$sourceFile, $targetFile, $type];
+    }
+
+    /**
      * Clear the underlying translation cache.
      * Çeviri önbelleğini temizler.
      */

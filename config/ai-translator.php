@@ -28,4 +28,8 @@ return [
     ],
 
     'auto_create_missing_files' => true,
+
+    'web_middleware' => ['web'],
+    'web_prefix' => null,
+    'api_middleware' => ['api'],
 ];

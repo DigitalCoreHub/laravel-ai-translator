@@ -94,6 +94,10 @@ class AiTranslatorServiceProvider extends ServiceProvider
             __DIR__.'/../config/ai-translator.php' => config_path('ai-translator.php'),
         ], 'config');
 
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'ai-translator');
+        $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
+        $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 TranslateCommand::class,

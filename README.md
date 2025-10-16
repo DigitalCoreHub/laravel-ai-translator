@@ -17,6 +17,7 @@ Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın d
 - **Dry-run**, **Force-rewrite**, and **Review** CLI flags
 - **Detailed JSON report** after each translation
 - **Progress bar + summary table** in CLI
+- **Livewire 3 + Volt yönetim paneli** ile web üzerinden çeviri yönetimi
 - **Short array syntax** (`return []`) maintained for PHP files
 
 ---
