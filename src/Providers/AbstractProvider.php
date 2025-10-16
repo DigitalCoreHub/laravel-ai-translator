@@ -11,9 +11,7 @@ use Illuminate\Support\Arr;
  */
 abstract class AbstractProvider implements TranslationProvider
 {
-    public function __construct(protected array $config = [])
-    {
-    }
+    public function __construct(protected array $config = []) {}
 
     /**
      * Unique provider identifier used within the manager.
