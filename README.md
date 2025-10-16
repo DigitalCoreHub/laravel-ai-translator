@@ -8,16 +8,16 @@ Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın d
 
 ## 🚀 Features / Özellikler
 
-✅ Detects and fills **missing translations** automatically
-✅ Supports both **PHP** and **JSON** language files
-✅ **Multiple providers:** OpenAI, DeepL, Google, DeepSeek
-✅ **Provider fallback:** If one fails, it switches automatically
-✅ **Translation cache** (memory for repeated translations)
-✅ **Automatic file creation** if missing
-✅ **Dry-run**, **Force-rewrite**, and **Review** CLI flags
-✅ **Detailed JSON report** after each translation
-✅ **Progress bar + summary table** in CLI
-✅ **Short array syntax** (`return []`) maintained for PHP files
+- Detects and fills **missing translations** automatically
+- Supports both **PHP** and **JSON** language files
+- **Multiple providers:** OpenAI, DeepL, Google, DeepSeek
+- **Provider fallback:** If one fails, it switches automatically
+- **Translation cache** (memory for repeated translations)
+- **Automatic file creation** if missing
+- **Dry-run**, **Force-rewrite**, and **Review** CLI flags
+- **Detailed JSON report** after each translation
+- **Progress bar + summary table** in CLI
+- **Short array syntax** (`return []`) maintained for PHP files
 
 ---
 
