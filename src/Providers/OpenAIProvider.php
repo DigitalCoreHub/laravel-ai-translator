@@ -2,7 +2,6 @@
 
 namespace DigitalCoreHub\LaravelAiTranslator\Providers;
 
-use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use OpenAI\Factory;
 use OpenAI\Responses\Chat\CreateResponse;
 use RuntimeException;
@@ -11,12 +10,19 @@ use RuntimeException;
  * Generate translations through the official OpenAI PHP SDK.
  * Resmî OpenAI PHP SDK'si üzerinden çeviriler üretir.
  */
-class OpenAIProvider implements TranslationProvider
+class OpenAIProvider extends AbstractProvider
 {
     public function __construct(
-        protected ?string $apiKey,
-        protected string $model
-    ) {}
+        protected ?Factory $factory = null,
+        array $config = []
+    ) {
+        parent::__construct($config);
+    }
+
+    public function name(): string
+    {
+        return 'openai';
+    }
 
     /**
      * Translate the given text into the target language using OpenAI's Chat Completions API.
@@ -30,7 +36,7 @@ class OpenAIProvider implements TranslationProvider
 
         /** @var CreateResponse $response */
         $response = $this->client()->chat()->create([
-            'model' => $this->model,
+            'model' => (string) $this->config('model', 'gpt-4o-mini'),
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user', 'content' => $userPrompt],
@@ -52,10 +58,10 @@ class OpenAIProvider implements TranslationProvider
      */
     protected function client()
     {
-        $factory = new Factory;
+        $factory = $this->factory instanceof Factory ? $this->factory : new Factory;
 
-        if ($this->apiKey) {
-            $factory = $factory->withApiKey($this->apiKey);
+        if ($apiKey = $this->config('api_key')) {
+            $factory = $factory->withApiKey($apiKey);
         }
 
         return $factory->make();

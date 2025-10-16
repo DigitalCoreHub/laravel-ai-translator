@@ -1,5 +1,8 @@
 <?php
 
+use DigitalCoreHub\LaravelAiTranslator\Services\TranslationCache;
+use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
+use DigitalCoreHub\LaravelAiTranslator\Tests\Fakes\FailingProvider;
 use DigitalCoreHub\LaravelAiTranslator\Tests\Fakes\FakeProvider;
 use Illuminate\Filesystem\Filesystem;
 
@@ -13,6 +16,9 @@ beforeEach(function () {
     $this->filesystem->makeDirectory($this->langPath, 0755, true);
 
     $this->app->instance(FakeProvider::class, new FakeProvider);
+    $this->app->forgetInstance('ai-translator.providers');
+    $this->app->forgetInstance(TranslationManager::class);
+    $this->app->forgetInstance(TranslationCache::class);
 });
 
 it('translates missing keys into multiple target locales', function () {
@@ -24,8 +30,8 @@ it('translates missing keys into multiple target locales', function () {
         ->expectsTable(
             ['File', 'Missing', 'Translated'],
             [
-                ['messages.php', 2, 2],
-                ['en.json', 1, 1],
+                ['lang/tr/messages.php', 2, 2],
+                ['lang/tr.json', 1, 1],
             ]
         )
         ->expectsOutput('Total missing: 3 | Translated: 3')
@@ -34,8 +40,8 @@ it('translates missing keys into multiple target locales', function () {
         ->expectsTable(
             ['File', 'Missing', 'Translated'],
             [
-                ['messages.php', 3, 3],
-                ['en.json', 2, 2],
+                ['lang/fr/messages.php', 3, 3],
+                ['lang/fr.json', 2, 2],
             ]
         )
         ->expectsOutput('Total missing: 5 | Translated: 5')
@@ -78,8 +84,8 @@ it('previews translations without touching files in dry mode', function () {
         ->expectsTable(
             ['File', 'Missing', 'Translated'],
             [
-                ['messages.php', 3, 3],
-                ['en.json', 2, 2],
+                ['lang/tr/messages.php', 3, 3],
+                ['lang/tr.json', 2, 2],
             ]
         )
         ->expectsOutput('Total missing: 5 | Translated: 5')
@@ -107,8 +113,8 @@ it('retranslates existing keys when forcing', function () {
         ->expectsTable(
             ['File', 'Missing', 'Translated'],
             [
-                ['messages.php', 0, 3],
-                ['en.json', 0, 2],
+                ['lang/tr/messages.php', 0, 3],
+                ['lang/tr.json', 0, 2],
             ]
         )
         ->expectsOutput('Total missing: 0 | Translated: 5')
@@ -130,6 +136,84 @@ it('retranslates existing keys when forcing', function () {
     $log = file_get_contents($this->logPath);
 
     expect($log)->toContain('force=true');
+});
+
+it('uses cache to avoid duplicate translations', function () {
+    config()->set('ai-translator.cache_enabled', true);
+    config()->set('ai-translator.cache_driver', 'array');
+    config()->set('cache.default', 'array');
+
+    $this->app->forgetInstance(TranslationCache::class);
+    $this->app->forgetInstance(TranslationManager::class);
+
+    seedEnglishLanguageFiles();
+
+    $provider = $this->app->make(FakeProvider::class);
+
+    $this->artisan('ai:translate', ['from' => 'en', 'to' => ['tr']])
+        ->assertSuccessful();
+
+    expect($provider->calls)->toHaveCount(5);
+
+    $this->artisan('ai:translate', ['from' => 'en', 'to' => ['tr'], '--force' => true])
+        ->assertSuccessful();
+
+    expect($provider->calls)->toHaveCount(5);
+});
+
+it('falls back to secondary provider when primary fails', function () {
+    config()->set('ai-translator.providers.openai.class', FailingProvider::class);
+    config()->set('ai-translator.providers.deepl.class', FakeProvider::class);
+    config()->set('ai-translator.providers.google.class', FakeProvider::class);
+
+    $failing = new FailingProvider;
+    $backup = new FakeProvider;
+
+    $this->app->instance(FailingProvider::class, $failing);
+    $this->app->instance(FakeProvider::class, $backup);
+
+    $this->app->forgetInstance('ai-translator.providers');
+    $this->app->forgetInstance(TranslationManager::class);
+
+    seedEnglishLanguageFiles();
+
+    $this->artisan('ai:translate', ['from' => 'en', 'to' => ['tr'], '--dry' => true])
+        ->assertSuccessful();
+
+    expect($failing->calls)->toBe(5)
+        ->and($backup->calls)->toBe(5);
+});
+
+it('clears cache when using the cache-clear flag', function () {
+    config()->set('ai-translator.cache_enabled', true);
+    config()->set('ai-translator.cache_driver', 'array');
+    config()->set('cache.default', 'array');
+
+    $this->app->forgetInstance(TranslationCache::class);
+    $this->app->forgetInstance(TranslationManager::class);
+
+    seedEnglishLanguageFiles();
+
+    $this->artisan('ai:translate', ['from' => 'en', 'to' => ['tr'], '--cache-clear' => true])
+        ->expectsOutput('Çeviri önbelleği temizlendi.')
+        ->assertSuccessful();
+});
+
+it('writes a translation report json file', function () {
+    seedEnglishLanguageFiles();
+
+    $reportPath = storage_path('logs/ai-translator-report.json');
+
+    $this->artisan('ai:translate', ['from' => 'en', 'to' => ['tr']])
+        ->assertSuccessful();
+
+    expect(file_exists($reportPath))->toBeTrue();
+
+    $payload = json_decode(file_get_contents($reportPath), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($payload)->toBeArray()
+        ->and($payload[0]['files'][0]['primary_provider'])->toBe('openai')
+        ->and($payload[0]['files'][0]['cache']['hit_rate'])->toBe(0.0);
 });
 
 function seedEnglishLanguageFiles(): void

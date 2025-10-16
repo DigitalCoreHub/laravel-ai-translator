@@ -21,6 +21,9 @@ abstract class TestCase extends Orchestra
     {
         parent::resolveApplicationConfiguration($app);
 
-        $app['config']->set('ai-translator.provider', FakeProvider::class);
+        $app['config']->set('ai-translator.provider', 'openai');
+        $app['config']->set('ai-translator.providers.openai.class', FakeProvider::class);
+        $app['config']->set('ai-translator.cache_enabled', false);
+        $app['config']->set('ai-translator.paths', [base_path('lang')]);
     }
 }
