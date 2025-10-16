@@ -421,7 +421,7 @@ class TranslationManager
                 'hit_rate' => $hitRate,
             ],
             'duration_ms' => round($stats['duration'] * 1000, 2),
-        };
+        ];
     }
 
     /**
