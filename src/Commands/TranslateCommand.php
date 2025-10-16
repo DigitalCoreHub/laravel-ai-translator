@@ -21,7 +21,10 @@ class TranslateCommand extends Command
         {from : Kaynak dil kodu}
         {to* : Çevrilecek hedef dil kodları}
         {--dry : Çevirileri dosyalara yazmadan terminalde önizler}
-        {--force : Mevcut çevirileri yeniden üretir ve üzerine yazar}';
+        {--force : Mevcut çevirileri yeniden üretir ve üzerine yazar}
+        {--provider= : Geçici olarak kullanılacak çeviri sağlayıcısı}
+        {--review : Çevirileri kaydetmeden kaynak → çeviri → sağlayıcı formatında gösterir}
+        {--cache-clear : Çeviri önbelleğini temizler}';
 
     /**
      * The console command description.
@@ -46,6 +49,18 @@ class TranslateCommand extends Command
         $targets = array_values(array_filter((array) $this->argument('to')));
         $dryRun = (bool) $this->option('dry');
         $force = (bool) $this->option('force');
+        $providerOverride = $this->option('provider') ? (string) $this->option('provider') : null;
+        $reviewMode = (bool) $this->option('review');
+        $cacheClear = (bool) $this->option('cache-clear');
+
+        if ($cacheClear) {
+            $this->manager->clearCache();
+            $this->info('Çeviri önbelleği temizlendi.');
+        }
+
+        if ($reviewMode) {
+            $dryRun = true;
+        }
 
         if ($targets === []) {
             $this->error('En az bir hedef dil belirtilmelidir.');
@@ -54,6 +69,7 @@ class TranslateCommand extends Command
         }
 
         $lastIndex = count($targets) - 1;
+        $reports = [];
 
         foreach ($targets as $index => $to) {
             $this->info("{$from} -> {$to} çeviri işlemi başlatılıyor…");
@@ -80,7 +96,11 @@ class TranslateCommand extends Command
                     }
                 },
                 $dryRun,
-                $force
+                $force,
+                [
+                    'provider' => $providerOverride,
+                    'review' => $reviewMode,
+                ]
             );
 
             if ($progressBar instanceof ProgressBar) {
@@ -88,7 +108,27 @@ class TranslateCommand extends Command
                 $this->newLine();
             }
 
-            if ($dryRun) {
+            if ($reviewMode) {
+                if ($result['reviews'] === []) {
+                    $this->line('  (Yeni çeviri bulunamadı)');
+                }
+
+                foreach ($result['reviews'] as $file => $entries) {
+                    $this->line("  {$file}:");
+
+                    foreach ($entries as $key => $details) {
+                        $this->line(sprintf(
+                            '    %s → %s → %s%s',
+                            $details['source'],
+                            $details['translation'],
+                            $details['provider'],
+                            $details['cache'] ? ' (cache)' : ''
+                        ));
+                    }
+                }
+
+                $this->comment('Review mode: Çeviriler dosyalara yazılmadı.');
+            } elseif ($dryRun) {
                 $this->comment('Dry run: Çeviriler dosyalara yazılmadı.');
 
                 if ($result['previews'] === []) {
@@ -120,12 +160,21 @@ class TranslateCommand extends Command
             }
 
             $this->logSummary($from, $to, $result, $dryRun, $force);
+            $reports[] = [
+                'from' => $from,
+                'to' => $to,
+                'files' => $result['report'],
+            ];
 
             $this->info('✔ Çeviri işlemi tamamlandı!');
 
             if ($index < $lastIndex) {
                 $this->newLine();
             }
+        }
+
+        if ($reports !== []) {
+            $this->writeReport($reports);
         }
 
         return self::SUCCESS;
@@ -156,5 +205,23 @@ class TranslateCommand extends Command
         );
 
         $this->filesystem->append($logPath, $line.PHP_EOL);
+    }
+
+    /**
+     * Persist the translation report summary to disk.
+     * Çeviri raporu özetini diske yazar.
+     */
+    protected function writeReport(array $report): void
+    {
+        $logPath = storage_path('logs/ai-translator-report.json');
+        $directory = dirname($logPath);
+
+        if (! $this->filesystem->isDirectory($directory)) {
+            $this->filesystem->makeDirectory($directory, 0755, true);
+        }
+
+        $payload = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+        $this->filesystem->put($logPath, $payload.PHP_EOL);
     }
 }

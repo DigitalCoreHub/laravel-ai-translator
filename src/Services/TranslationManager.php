@@ -6,7 +6,9 @@ use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Symfony\Component\Finder\Finder;
+use Throwable;
 
 /**
  * Coordinate translation of missing locale keys across language files.
@@ -14,89 +16,196 @@ use Symfony\Component\Finder\Finder;
  */
 class TranslationManager
 {
-    protected string $languageRoot;
+    /**
+     * Resolved language directories that should be inspected.
+     * İşlem yapılacak çözülmüş dil dizinleri.
+     *
+     * @var array<int, string>
+     */
+    protected array $paths;
 
+    /**
+     * Default fallback order for providers.
+     * Sağlayıcılar için varsayılan geri dönüş sırası.
+     */
+    protected array $fallbackOrder = ['openai', 'deepl', 'google'];
+
+    /**
+     * @param  array<string, TranslationProvider>  $providers
+     */
     public function __construct(
-        protected TranslationProvider $provider,
+        protected array $providers,
+        protected TranslationCache $cache,
         protected Filesystem $filesystem,
         protected string $basePath,
+        array $paths = [],
+        protected string $configuredProvider = 'openai',
         protected bool $autoCreateMissingFiles = true
     ) {
-        $this->languageRoot = $this->resolveLanguageRoot($basePath);
+        $this->paths = $this->resolvePaths($paths === []
+            ? [$this->resolveLanguageRoot($basePath)]
+            : $paths
+        );
     }
 
     /**
      * Translate missing keys from one locale into another.
      * Bir dildeki eksik anahtarları başka bir dile çevirir.
      *
-     * @return array{files: array<int, array{name: string, missing: int, translated: int}>, totals: array{missing: int, translated: int}}
+     * @return array{
+     *     files: array<int, array{name: string, missing: int, translated: int}>,
+     *     totals: array{missing: int, translated: int},
+     *     previews: array<string, array<string, string>>,
+     *     reviews: array<string, array<string, array{source: string, translation: string, provider: string, cache: bool}>>,
+     *     report: array<int, array<string, mixed>>
+     * }
      */
-    public function translate(string $from, string $to, ?callable $progress = null, bool $dryRun = false, bool $force = false): array
-    {
+    public function translate(
+        string $from,
+        string $to,
+        ?callable $progress = null,
+        bool $dryRun = false,
+        bool $force = false,
+        array $options = []
+    ): array {
+        $providerOverride = $options['provider'] ?? null;
+        $reviewMode = (bool) ($options['review'] ?? false);
+
+        if ($reviewMode) {
+            $dryRun = true;
+        }
+
         $files = [];
         $totals = ['missing' => 0, 'translated' => 0];
         $previews = [];
+        $reviews = [];
+        $report = [];
+        $providerOrder = $this->resolveProviderOrder($providerOverride);
 
-        $sourcePath = $this->langDirectory($from);
+        foreach ($this->paths as $root) {
+            $sourceDirectory = rtrim($root, '/').'/'.$from;
+            $targetDirectory = rtrim($root, '/').'/'.$to;
 
-        foreach ($this->gatherPhpFiles($sourcePath) as $relativeFile) {
-            $sourceFile = $sourcePath.'/'.$relativeFile;
-            $targetFile = $this->langDirectory($to).'/'.$relativeFile;
+            foreach ($this->gatherPhpFiles($sourceDirectory) as $relativeFile) {
+                $sourceFile = $sourceDirectory.'/'.$relativeFile;
+                $targetFile = $targetDirectory.'/'.$relativeFile;
 
-            [$missingCount, $translatedCount, $preview] = $this->translatePhpFile(
-                $from,
-                $to,
-                $sourceFile,
-                $targetFile,
-                $progress,
-                $dryRun,
-                $force
-            );
+                $source = $this->readPhp($sourceFile);
+                $target = $this->filesystem->exists($targetFile)
+                    ? $this->readPhp($targetFile)
+                    : [];
 
-            $files[] = [
-                'name' => $relativeFile,
-                'missing' => $missingCount,
-                'translated' => $translatedCount,
-            ];
+                [$missing, $translatedCount, $updated, $preview, $fileReviews, $stats] = $this->translateArray(
+                    from: $from,
+                    to: $to,
+                    source: $source,
+                    target: $target,
+                    progress: $progress,
+                    fileName: basename($sourceFile),
+                    dryRun: $dryRun,
+                    force: $force,
+                    providerOrder: $providerOrder
+                );
 
-            $totals['missing'] += $missingCount;
-            $totals['translated'] += $translatedCount;
+                if ($updated && ! $dryRun) {
+                    $this->writePhp($targetFile, $target);
+                } else {
+                    $this->initializeTargetFile($targetFile, 'php', $dryRun);
+                }
 
-            if ($preview !== []) {
-                $previews['lang/'.$to.'/'.$relativeFile] = $preview;
+                $relativePath = $this->relativePath($targetFile);
+
+                $files[] = [
+                    'name' => $relativePath,
+                    'missing' => $missing,
+                    'translated' => $translatedCount,
+                ];
+
+                $totals['missing'] += $missing;
+                $totals['translated'] += $translatedCount;
+
+                if ($preview !== []) {
+                    $previews[$relativePath] = $preview;
+                }
+
+                if ($fileReviews !== [] && $reviewMode) {
+                    $reviews[$relativePath] = $fileReviews;
+                }
+
+                $report[] = $this->buildReportEntry(
+                    path: $relativePath,
+                    stats: $stats,
+                    translated: $translatedCount,
+                    missing: $missing
+                );
+            }
+
+            $sourceJson = $sourceDirectory.'.json';
+
+            if ($this->filesystem->exists($sourceJson)) {
+                $targetJson = $targetDirectory.'.json';
+
+                $source = $this->readJson($sourceJson);
+                $target = $this->filesystem->exists($targetJson)
+                    ? $this->readJson($targetJson)
+                    : [];
+
+                [$missing, $translatedCount, $updated, $preview, $fileReviews, $stats] = $this->translateArray(
+                    from: $from,
+                    to: $to,
+                    source: $source,
+                    target: $target,
+                    progress: $progress,
+                    fileName: basename($sourceJson),
+                    dryRun: $dryRun,
+                    force: $force,
+                    providerOrder: $providerOrder
+                );
+
+                if ($updated && ! $dryRun) {
+                    $this->writeJson($targetJson, $target);
+                } else {
+                    $this->initializeTargetFile($targetJson, 'json', $dryRun);
+                }
+
+                $relativePath = $this->relativePath($targetJson);
+
+                $files[] = [
+                    'name' => $relativePath,
+                    'missing' => $missing,
+                    'translated' => $translatedCount,
+                ];
+
+                $totals['missing'] += $missing;
+                $totals['translated'] += $translatedCount;
+
+                if ($preview !== []) {
+                    $previews[$relativePath] = $preview;
+                }
+
+                if ($fileReviews !== [] && $reviewMode) {
+                    $reviews[$relativePath] = $fileReviews;
+                }
+
+                $report[] = $this->buildReportEntry(
+                    path: $relativePath,
+                    stats: $stats,
+                    translated: $translatedCount,
+                    missing: $missing
+                );
             }
         }
 
-        $sourceJson = $this->langJsonPath($from);
+        return compact('files', 'totals', 'previews', 'reviews', 'report');
+    }
 
-        if ($this->filesystem->exists($sourceJson)) {
-            $targetJson = $this->langJsonPath($to);
-
-            [$missingCount, $translatedCount, $preview] = $this->translateJsonFile(
-                $from,
-                $to,
-                $sourceJson,
-                $targetJson,
-                $progress,
-                $dryRun,
-                $force
-            );
-
-            $files[] = [
-                'name' => basename($sourceJson),
-                'missing' => $missingCount,
-                'translated' => $translatedCount,
-            ];
-
-            $totals['missing'] += $missingCount;
-            $totals['translated'] += $translatedCount;
-
-            if ($preview !== []) {
-                $previews['lang/'.$to.'.json'] = $preview;
-            }
-        }
-
-        return compact('files', 'totals', 'previews');
+    /**
+     * Clear the underlying translation cache.
+     * Çeviri önbelleğini temizler.
+     */
+    public function clearCache(): void
+    {
+        $this->cache->clear();
     }
 
     /**
@@ -107,118 +216,50 @@ class TranslationManager
     {
         $total = 0;
 
-        $sourcePath = $this->langDirectory($from);
+        foreach ($this->paths as $root) {
+            $sourceDirectory = rtrim($root, '/').'/'.$from;
+            $targetDirectory = rtrim($root, '/').'/'.$to;
 
-        foreach ($this->gatherPhpFiles($sourcePath) as $relativeFile) {
-            $sourceFile = $sourcePath.'/'.$relativeFile;
-            $source = $this->readPhp($sourceFile);
+            foreach ($this->gatherPhpFiles($sourceDirectory) as $relativeFile) {
+                $sourceFile = $sourceDirectory.'/'.$relativeFile;
+                $targetFile = $targetDirectory.'/'.$relativeFile;
 
-            if ($force) {
-                $total += $this->countTotalKeys($source);
+                $source = $this->readPhp($sourceFile);
+                $target = $this->filesystem->exists($targetFile)
+                    ? $this->readPhp($targetFile)
+                    : [];
 
+                $total += $force
+                    ? $this->countTotalKeys($source)
+                    : $this->countMissingFromArrays($source, $target);
+            }
+
+            $sourceJson = $sourceDirectory.'.json';
+
+            if (! $this->filesystem->exists($sourceJson)) {
                 continue;
             }
 
-            $targetFile = $this->langDirectory($to).'/'.$relativeFile;
-            $target = $this->readPhp($targetFile);
+            $targetJson = $targetDirectory.'.json';
 
-            $total += $this->countMissingFromArrays($source, $target);
-        }
-
-        $sourceJson = $this->langJsonPath($from);
-
-        if ($this->filesystem->exists($sourceJson)) {
             $source = $this->readJson($sourceJson);
+            $target = $this->filesystem->exists($targetJson)
+                ? $this->readJson($targetJson)
+                : [];
 
-            if ($force) {
-                $total += $this->countTotalKeys($source);
-
-                return $total;
-            }
-
-            $target = $this->readJson($this->langJsonPath($to));
-
-            $total += $this->countMissingFromArrays($source, $target);
+            $total += $force
+                ? $this->countTotalKeys($source)
+                : $this->countMissingFromArrays($source, $target);
         }
 
         return $total;
     }
 
     /**
-     * Translate the contents of a PHP language file.
-     * Bir PHP dil dosyasının içeriğini çevirir.
-     */
-    protected function translatePhpFile(
-        string $from,
-        string $to,
-        string $sourceFile,
-        string $targetFile,
-        ?callable $progress = null,
-        bool $dryRun = false,
-        bool $force = false
-    ): array {
-        $source = $this->readPhp($sourceFile);
-        $target = $this->readPhp($targetFile);
-
-        [$missing, $translated, $updated, $preview] = $this->translateArray(
-            $from,
-            $to,
-            $source,
-            $target,
-            $progress,
-            basename($sourceFile),
-            $dryRun,
-            $force
-        );
-
-        if ($updated) {
-            $this->writePhp($targetFile, $target);
-        } else {
-            $this->initializeTargetFile($targetFile, 'php', $dryRun);
-        }
-
-        return [$missing, $translated, $preview];
-    }
-
-    /**
-     * Translate the contents of a JSON language file.
-     * Bir JSON dil dosyasının içeriğini çevirir.
-     */
-    protected function translateJsonFile(
-        string $from,
-        string $to,
-        string $sourceFile,
-        string $targetFile,
-        ?callable $progress = null,
-        bool $dryRun = false,
-        bool $force = false
-    ): array {
-        $source = $this->readJson($sourceFile);
-        $target = $this->readJson($targetFile);
-
-        [$missing, $translated, $updated, $preview] = $this->translateArray(
-            $from,
-            $to,
-            $source,
-            $target,
-            $progress,
-            basename($sourceFile),
-            $dryRun,
-            $force
-        );
-
-        if ($updated) {
-            $this->writeJson($targetFile, $target);
-        } else {
-            $this->initializeTargetFile($targetFile, 'json', $dryRun);
-        }
-
-        return [$missing, $translated, $preview];
-    }
-
-    /**
      * Compare flattened arrays and translate missing keys.
      * Düzleştirilmiş dizileri karşılaştırır ve eksik anahtarları çevirir.
+     *
+     * @return array{int, int, bool, array<string, string>, array<string, array{source: string, translation: string, provider: string, cache: bool}>, array<string, mixed>}
      */
     protected function translateArray(
         string $from,
@@ -228,7 +269,8 @@ class TranslationManager
         ?callable $progress,
         string $fileName,
         bool $dryRun,
-        bool $force
+        bool $force,
+        array $providerOrder
     ): array {
         $flatSource = $this->flatten($source);
         $flatTarget = $this->flatten($target);
@@ -239,6 +281,13 @@ class TranslationManager
         $translated = 0;
         $updated = false;
         $preview = [];
+        $reviews = [];
+        $stats = [
+            'providers' => [],
+            'cache_hits' => 0,
+            'cache_misses' => 0,
+            'duration' => 0.0,
+        ];
 
         $keysToTranslate = $force ? $flatSource : $missingKeys;
 
@@ -247,16 +296,28 @@ class TranslationManager
                 $progress($fileName, $key, $text);
             }
 
-            [$normalizedText, $placeholders] = $this->maskPlaceholders($text);
+            $result = $this->performTranslation($text, $from, $to, $providerOrder);
 
-            $translatedText = $this->provider->translate($normalizedText, $from, $to);
+            $preview[$key] = $result['translation'];
 
-            $translation = $this->restorePlaceholders($translatedText, $placeholders, $normalizedText);
+            $reviews[$key] = [
+                'source' => $text,
+                'translation' => $result['translation'],
+                'provider' => $result['provider'],
+                'cache' => $result['cache_hit'],
+            ];
 
-            $preview[$key] = $translation;
+            $stats['providers'][$result['provider']] = ($stats['providers'][$result['provider']] ?? 0) + 1;
+            $stats['duration'] += $result['duration'];
+
+            if ($result['cache_hit']) {
+                $stats['cache_hits']++;
+            } else {
+                $stats['cache_misses']++;
+            }
 
             if (! $dryRun) {
-                $flatTarget[$key] = $translation;
+                $flatTarget[$key] = $result['translation'];
                 $updated = true;
             }
 
@@ -267,12 +328,210 @@ class TranslationManager
             $target = $this->expand($flatTarget);
         }
 
-        return [$missing, $translated, $updated, $preview];
+        return [$missing, $translated, $updated, $preview, $reviews, $stats];
     }
 
     /**
-     * Count missing keys between two translation arrays.
-     * İki çeviri dizisi arasındaki eksik anahtarları sayar.
+     * Execute a translation against the provider fallback chain.
+     * Sağlayıcı geri dönüş zincirine karşı bir çeviri gerçekleştirir.
+     *
+     * @param  array<int, string>  $providerOrder
+     * @return array{translation: string, provider: string, cache_hit: bool, duration: float}
+     */
+    protected function performTranslation(string $text, string $from, string $to, array $providerOrder): array
+    {
+        [$normalized, $placeholders] = $this->maskPlaceholders($text);
+
+        $errors = [];
+
+        foreach ($providerOrder as $name) {
+            if (! isset($this->providers[$name])) {
+                continue;
+            }
+
+            $cached = $this->cache->get($name, $from, $to, $normalized);
+
+            if (is_array($cached) && isset($cached['translation'])) {
+                return [
+                    'translation' => $cached['translation'],
+                    'provider' => $cached['provider'] ?? $name,
+                    'cache_hit' => true,
+                    'duration' => 0.0,
+                ];
+            }
+
+            $provider = $this->providers[$name];
+            $start = microtime(true);
+
+            try {
+                $translated = $provider->translate($normalized, $from, $to);
+            } catch (Throwable $exception) {
+                $errors[] = $exception;
+
+                continue;
+            }
+
+            $duration = microtime(true) - $start;
+            $restored = $this->restorePlaceholders($translated, $placeholders, $normalized);
+
+            $this->cache->put($name, $from, $to, $normalized, [
+                'translation' => $restored,
+                'provider' => $name,
+            ]);
+
+            return [
+                'translation' => $restored,
+                'provider' => $name,
+                'cache_hit' => false,
+                'duration' => $duration,
+            ];
+        }
+
+        $messages = array_map(static fn (Throwable $error) => $error->getMessage(), $errors);
+        $message = 'All translation providers failed.';
+
+        if ($messages !== []) {
+            $message .= ' '.implode(' | ', $messages);
+        }
+
+        throw new RuntimeException($message);
+    }
+
+    /**
+     * Build a report entry for a translated file.
+     * Çevrilen bir dosya için rapor girdisi oluşturur.
+     *
+     * @param  array{providers: array<string, int>, cache_hits: int, cache_misses: int, duration: float}  $stats
+     * @return array<string, mixed>
+     */
+    protected function buildReportEntry(string $path, array $stats, int $translated, int $missing): array
+    {
+        $totalCache = $stats['cache_hits'] + $stats['cache_misses'];
+        $hitRate = $totalCache > 0 ? $stats['cache_hits'] / $totalCache : 0.0;
+
+        return [
+            'file' => $path,
+            'translated' => $translated,
+            'missing' => $missing,
+            'primary_provider' => $this->primaryProvider($stats['providers']),
+            'providers' => $stats['providers'],
+            'cache' => [
+                'hits' => $stats['cache_hits'],
+                'misses' => $stats['cache_misses'],
+                'hit_rate' => $hitRate,
+            ],
+            'duration_ms' => round($stats['duration'] * 1000, 2),
+        };
+    }
+
+    /**
+     * Determine the provider used most often for a file.
+     * Bir dosya için en sık kullanılan sağlayıcıyı belirler.
+     *
+     * @param  array<string, int>  $providers
+     */
+    protected function primaryProvider(array $providers): string
+    {
+        if ($providers === []) {
+            return 'unknown';
+        }
+
+        arsort($providers);
+
+        return (string) array_key_first($providers);
+    }
+
+    /**
+     * Determine provider order including configured fallbacks.
+     * Yapılandırılmış geri dönüşler dahil sağlayıcı sırasını belirler.
+     */
+    protected function resolveProviderOrder(?string $override): array
+    {
+        $order = $this->fallbackOrder;
+
+        if ($this->configuredProvider !== null) {
+            array_unshift($order, $this->configuredProvider);
+        }
+
+        if ($override) {
+            array_unshift($order, $override);
+        }
+
+        $order = array_values(array_unique(array_filter($order, function ($name) {
+            return isset($this->providers[$name]);
+        })));
+
+        if ($order === []) {
+            $order = array_keys($this->providers);
+        }
+
+        return $order;
+    }
+
+    /**
+     * Resolve directories from configured paths.
+     * Yapılandırılan yolları gerçek dizinlere dönüştürür.
+     *
+     * @return array<int, string>
+     */
+    protected function resolvePaths(array $paths): array
+    {
+        $resolved = [];
+
+        foreach ($paths as $path) {
+            foreach ($this->expandPath($path) as $candidate) {
+                $normalized = rtrim($candidate, '/');
+
+                if (! in_array($normalized, $resolved, true)) {
+                    $resolved[] = $normalized;
+                }
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Expand wildcard paths.
+     * Joker karakter içeren yolları genişletir.
+     *
+     * @return array<int, string>
+     */
+    protected function expandPath(string $path): array
+    {
+        if (! str_contains($path, '*')) {
+            return [$path];
+        }
+
+        $glob = glob($path, GLOB_ONLYDIR) ?: [];
+
+        return array_values(array_filter($glob, static fn ($candidate) => $candidate !== false));
+    }
+
+    /**
+     * Determine the base language directory to operate on.
+     * Kullanılacak temel dil dizinini belirler.
+     */
+    protected function resolveLanguageRoot(string $basePath): string
+    {
+        $normalized = rtrim($basePath, '/');
+        $preferred = $normalized.'/lang';
+        $legacy = $normalized.'/resources/lang';
+
+        if ($this->filesystem->isDirectory($preferred)) {
+            return $preferred;
+        }
+
+        if ($this->filesystem->isDirectory($legacy)) {
+            return $legacy;
+        }
+
+        return $preferred;
+    }
+
+    /**
+     * Compare flattened arrays for missing keys.
+     * Düzleştirilmiş dizilerdeki eksik anahtarları karşılaştırır.
      */
     protected function countMissingFromArrays(array $source, array $target): int
     {
@@ -356,45 +615,6 @@ class TranslationManager
     }
 
     /**
-     * Determine the base language directory to operate on.
-     * Kullanılacak temel dil dizinini belirler.
-     */
-    protected function resolveLanguageRoot(string $basePath): string
-    {
-        $normalized = rtrim($basePath, '/');
-        $preferred = $normalized.'/lang';
-        $legacy = $normalized.'/resources/lang';
-
-        if ($this->filesystem->isDirectory($preferred)) {
-            return $preferred;
-        }
-
-        if ($this->filesystem->isDirectory($legacy)) {
-            return $legacy;
-        }
-
-        return $preferred;
-    }
-
-    /**
-     * Build the directory path for a locale.
-     * Bir yerel için dizin yolunu oluşturur.
-     */
-    protected function langDirectory(string $locale): string
-    {
-        return rtrim($this->languageRoot, '/').'/'.$locale;
-    }
-
-    /**
-     * Build the JSON file path for a locale.
-     * Bir yerel için JSON dosya yolunu oluşturur.
-     */
-    protected function langJsonPath(string $locale): string
-    {
-        return rtrim($this->languageRoot, '/').'/'.$locale.'.json';
-    }
-
-    /**
      * Read a JSON translation file.
      * Bir JSON çeviri dosyasını okur.
      */
@@ -404,7 +624,11 @@ class TranslationManager
             return [];
         }
 
-        return json_decode($this->filesystem->get($path), true, 512, JSON_THROW_ON_ERROR);
+        $contents = $this->filesystem->get($path);
+
+        return $contents !== ''
+            ? json_decode($contents, true, 512, JSON_THROW_ON_ERROR)
+            : [];
     }
 
     /**
@@ -413,14 +637,9 @@ class TranslationManager
      */
     protected function readPhp(string $path): array
     {
-        if (! $this->filesystem->exists($path)) {
-            return [];
-        }
-
-        /** @var array $translations */
-        $translations = $this->filesystem->getRequire($path);
-
-        return $translations;
+        return $this->filesystem->exists($path)
+            ? Arr::undot(require $path)
+            : [];
     }
 
     /**
@@ -431,10 +650,7 @@ class TranslationManager
     {
         $this->ensureDirectory(dirname($path));
 
-        $this->filesystem->put(
-            $path,
-            json_encode($translations, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).PHP_EOL
-        );
+        $this->filesystem->put($path, json_encode($translations, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE).PHP_EOL);
     }
 
     /**
@@ -487,8 +703,8 @@ class TranslationManager
     }
 
     /**
-     * Replace HTML tags and placeholders with safe tokens before translation.
-     * Çeviri öncesi HTML etiketlerini ve yer tutucuları güvenli belirteçlerle değiştirir.
+     * Replace placeholders with tokens before translation.
+     * Çeviri öncesi yer tutucuları belirteçlerle değiştirir.
      *
      * @return array{0: string, 1: array<string, string>}
      */
@@ -552,10 +768,19 @@ class TranslationManager
     protected function placeholderPatterns(): array
     {
         return [
-            '/<[^>]+>/' => 'html',
-            '/:\w+/' => 'placeholder',
-            '/{{\s*[^}]+\s*}}/' => 'blade',
-            '/%(?:\d+\$)?[a-zA-Z]/' => 'format',
+            '/<\/?[A-Za-z][^>]*>/' => 'html',
+            '/:[A-Za-z0-9_\-]+/' => 'placeholder',
+            '/\{\{\s*.*?\s*\}\}/s' => 'blade',
+            '/%(?:\d+\$)?s/' => 'format',
         ];
+    }
+
+    /**
+     * Convert an absolute path to repository relative form.
+     * Mutlak yolu depo göreli biçime dönüştürür.
+     */
+    protected function relativePath(string $path): string
+    {
+        return ltrim(Str::after($path, rtrim($this->basePath, '/').'/'), '/');
     }
 }
