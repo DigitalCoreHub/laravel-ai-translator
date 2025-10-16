@@ -13,8 +13,7 @@ class TranslationCache
     public function __construct(
         protected Repository $repository,
         protected bool $enabled = true
-    ) {
-    }
+    ) {}
 
     public function get(string $provider, string $from, string $to, string $text): mixed
     {
