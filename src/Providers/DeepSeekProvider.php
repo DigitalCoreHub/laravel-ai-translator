@@ -12,7 +12,7 @@ class DeepSeekProvider implements TranslationProvider
         protected array $config
     ) {}
 
-    public function translate(string $text, string $from, string $to): string
+    public function translate(string $text, ?string $from = null, ?string $to = null): string
     {
         $apiKey = $this->config['api_key'] ?? env('DEEPSEEK_API_KEY');
         $model  = $this->config['model'] ?? env('DEEPSEEK_MODEL', 'deepseek-chat');
