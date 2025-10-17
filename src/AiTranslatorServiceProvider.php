@@ -83,6 +83,12 @@ class AiTranslatorServiceProvider extends ServiceProvider
                 config: $app['config']->get('ai-translator.providers.google', [])
             );
         });
+
+        $this->app->singleton(DeepSeekProvider::class, function ($app) {
+            return new DeepSeekProvider(
+                config: $app['config']->get('ai-translator.providers.deepseek', [])
+            );
+        });
     }
 
     /**
