@@ -15,7 +15,7 @@ class DeepSeekProvider implements TranslationProvider
     public function translate(string $text, ?string $from = null, ?string $to = null): string
     {
         $apiKey = $this->config['api_key'] ?? env('DEEPSEEK_API_KEY');
-        $model  = $this->config['model'] ?? env('DEEPSEEK_MODEL', 'deepseek-chat');
+        $model = $this->config['model'] ?? env('DEEPSEEK_MODEL', 'deepseek-chat');
 
         $response = Http::withToken($apiKey)
             ->post('https://api.deepseek.com/v1/chat/completions', [

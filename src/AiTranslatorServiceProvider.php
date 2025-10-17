@@ -2,15 +2,15 @@
 
 namespace DigitalCoreHub\LaravelAiTranslator;
 
-use Illuminate\Support\ServiceProvider;
+use DigitalCoreHub\LaravelAiTranslator\Commands\TranslateCommand;
+use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\DeepLProvider;
+use DigitalCoreHub\LaravelAiTranslator\Providers\DeepSeekProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\GoogleProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAIProvider;
-use DigitalCoreHub\LaravelAiTranslator\Commands\TranslateCommand;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationCache;
-use DigitalCoreHub\LaravelAiTranslator\Providers\DeepSeekProvider;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
-use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
+use Illuminate\Support\ServiceProvider;
 
 /**
  * Bootstrap bindings and configuration for the AI translator package.
