@@ -22,7 +22,10 @@
   "autoload": {
     "psr-4": {
       "DigitalCoreHub\\LaravelAiTranslator\\": "src/"
-    }
+    },
+    "files": [
+      "src/Support/livewire-stubs.php"
+    ]
   },
   "autoload-dev": {
     "psr-4": {

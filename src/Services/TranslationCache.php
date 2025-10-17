@@ -52,6 +52,25 @@ class TranslationCache
         $this->repository->flush();
     }
 
+    public function forget(string $provider, string $from, string $to, string $text): void
+    {
+        if (! $this->enabled) {
+            return;
+        }
+
+        $key = $this->key($provider, $from, $to, $text);
+
+        if (method_exists($this->repository, 'forget')) {
+            $this->repository->forget($key);
+
+            return;
+        }
+
+        if (method_exists($this->repository, 'delete')) {
+            $this->repository->delete($key);
+        }
+    }
+
     protected function key(string $provider, string $from, string $to, string $text): string
     {
         return sha1(implode('|', [$provider, $from, $to, $text]));
