@@ -44,7 +44,7 @@ class Settings extends Component
     public function render(): mixed
     {
         return view('ai-translator::livewire.translator.settings')
-            ->layout('ai-translator::layouts.app');
+            ->layout('ai-translator::vendor.ai-translator.layouts.app');
     }
 
     public function testConnection(string $provider): void
