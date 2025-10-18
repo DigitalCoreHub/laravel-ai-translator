@@ -13,7 +13,7 @@
                 wire:model="email"
                 required
                 autofocus
-                class="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                class="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:text-black"
             >
             @error('email')
                 <p class="text-xs text-rose-400">{{ $message }}</p>
@@ -27,7 +27,7 @@
                 type="password"
                 wire:model="password"
                 required
-                class="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                class="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:text-black"
             >
             @error('password')
                 <p class="text-xs text-rose-400">{{ $message }}</p>
