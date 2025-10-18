@@ -11,7 +11,7 @@ if (! class_exists(Component::class)) {
         /**
          * Render the component output.
          */
-        public function render()
+        public function render(): mixed
         {
             return '';
         }
