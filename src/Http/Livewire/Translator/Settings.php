@@ -9,10 +9,15 @@ use Throwable;
 class Settings extends Component
 {
     public array $providers = [];
+
     public array $status = [];
+
     public string $currentProvider = '';
+
     public string $from = 'en';
+
     public string $to = 'tr';
+
     public array $locales = [];
 
     public function mount(): void
