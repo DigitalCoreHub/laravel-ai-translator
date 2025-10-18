@@ -18,6 +18,12 @@ class AiTranslatorLogger
             File::makeDirectory(dirname($path), 0755, true, true);
         }
 
+        $message = ltrim($message);
+
+        if (! str_starts_with($message, 'INFO:')) {
+            $message = 'INFO: '.$message;
+        }
+
         Log::build([
             'driver' => 'single',
             'path' => $path,

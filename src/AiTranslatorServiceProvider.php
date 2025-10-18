@@ -6,7 +6,6 @@ use DigitalCoreHub\LaravelAiTranslator\Commands\TranslateCommand;
 use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Dashboard;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\EditTranslation;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Login;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Logs;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Settings;
 use DigitalCoreHub\LaravelAiTranslator\Providers\DeepLProvider;
@@ -15,6 +14,10 @@ use DigitalCoreHub\LaravelAiTranslator\Providers\GoogleProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAIProvider;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationCache;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
+use DigitalCoreHub\LaravelAiTranslator\Support\AiTranslatorLogger;
+use Illuminate\Auth\Events\Login as AuthLoginEvent;
+use Illuminate\Auth\Events\Logout as AuthLogoutEvent;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -115,6 +118,26 @@ class AiTranslatorServiceProvider extends ServiceProvider
 
         $this->registerLivewireComponents();
 
+        Event::listen(AuthLoginEvent::class, static function (AuthLoginEvent $event): void {
+            if (! config('ai-translator.auth_enabled', true)) {
+                return;
+            }
+
+            $email = $event->user->email ?? 'unknown';
+
+            AiTranslatorLogger::info(sprintf('User %s logged in.', $email));
+        });
+
+        Event::listen(AuthLogoutEvent::class, static function (AuthLogoutEvent $event): void {
+            if (! config('ai-translator.auth_enabled', true)) {
+                return;
+            }
+
+            $email = $event->user?->email ?? 'unknown';
+
+            AiTranslatorLogger::info(sprintf('User %s logged out.', $email));
+        });
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 TranslateCommand::class,
@@ -133,7 +156,6 @@ class AiTranslatorServiceProvider extends ServiceProvider
             EditTranslation::class,
             Settings::class,
             Logs::class,
-            Login::class,
         ] as $component) {
             \Livewire\Livewire::component(
                 $this->livewireComponentAlias($component),

@@ -1,15 +1,14 @@
 @php
     $user = Illuminate\Support\Facades\Auth::user();
-    $email = $user->email ?? session('ai_translator_email');
 @endphp
 
-@if (config('ai-translator.auth_enabled', false) && $email)
+@if ($user)
     <div class="flex flex-col items-end gap-2 text-xs text-slate-600 dark:text-slate-300">
         <span class="inline-flex items-center gap-2 rounded-full bg-slate-200/70 px-3 py-1 font-medium text-slate-700 dark:bg-slate-800/70 dark:text-slate-100">
             <span>👤 Signed in as:</span>
-            <span class="font-semibold">{{ $email }}</span>
+            <span class="font-semibold">{{ $user->email }}</span>
         </span>
-        <form method="POST" action="{{ route('ai-translator.logout') }}">
+        <form method="POST" action="{{ route('logout') }}">
             @csrf
             <button
                 type="submit"
