@@ -11,7 +11,6 @@ use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAIProvider;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationCache;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
 use Illuminate\Support\ServiceProvider;
-use Livewire\Volt\Volt;
 
 /**
  * Bootstrap bindings and configuration for the AI translator package.
@@ -108,8 +107,6 @@ class AiTranslatorServiceProvider extends ServiceProvider
 
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'ai-translator');
         $this->loadRoutesFrom(__DIR__.'/../routes/ai-translator.php');
-
-        Volt::layout('ai-translator::layouts.app');
 
         if ($this->app->runningInConsole()) {
             $this->commands([
