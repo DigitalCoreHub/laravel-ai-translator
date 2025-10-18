@@ -17,25 +17,31 @@
                 <label class="flex flex-col text-sm">
                     <span class="mb-1 font-medium">Kaynak Dil</span>
                     <select wire:model="from" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:ring focus:ring-sky-200/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-sky-400">
-                        @foreach ($locales as $locale)
+                        @forelse (($locales ?? []) as $locale)
                             <option value="{{ $locale }}">{{ strtoupper($locale) }}</option>
-                        @endforeach
+                        @empty
+                            <option value="" disabled selected>Locale bulunamadı</option>
+                        @endforelse
                     </select>
                 </label>
                 <label class="flex flex-col text-sm">
                     <span class="mb-1 font-medium">Hedef Dil</span>
                     <select wire:model="to" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:ring focus:ring-sky-200/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-sky-400">
-                        @foreach ($locales as $locale)
+                        @forelse (($locales ?? []) as $locale)
                             <option value="{{ $locale }}">{{ strtoupper($locale) }}</option>
-                        @endforeach
+                        @empty
+                            <option value="" disabled selected>Locale bulunamadı</option>
+                        @endforelse
                     </select>
                 </label>
                 <label class="flex flex-col text-sm">
                     <span class="mb-1 font-medium">Provider</span>
                     <select wire:model="provider" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:ring focus:ring-sky-200/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-sky-400">
-                        @foreach ($providers as $name)
+                        @forelse (($providers ?? []) as $name)
                             <option value="{{ $name }}">{{ ucfirst($name) }}</option>
-                        @endforeach
+                        @empty
+                            <option value="" disabled selected>Provider bulunamadı</option>
+                        @endforelse
                     </select>
                 </label>
                 <div class="flex items-end gap-2">
@@ -74,7 +80,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
-                        @forelse ($entries as $entry)
+                        @forelse (($entries ?? []) as $entry)
                             <tr class="bg-white/80 transition hover:bg-slate-50 dark:bg-slate-900/60 dark:hover:bg-slate-900">
                                 <td class="px-4 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">{{ $entry['file'] }}</td>
                                 <td class="px-4 py-3 font-medium">{{ $entry['key'] }}</td>
