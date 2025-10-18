@@ -16,7 +16,7 @@ class AiTranslatorUser extends Authenticatable
      */
     public static function make(string $email): self
     {
-        $user = new self();
+        $user = new self;
 
         $user->forceFill([
             'id' => sha1(strtolower($email)),
