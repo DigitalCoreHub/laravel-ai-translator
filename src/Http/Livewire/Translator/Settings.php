@@ -41,7 +41,7 @@ class Settings extends Component
         }
     }
 
-    public function render()
+    public function render(): mixed
     {
         return view('ai-translator::livewire.translator.settings');
     }

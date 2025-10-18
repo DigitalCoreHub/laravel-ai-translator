@@ -49,7 +49,7 @@ class Logs extends Component
         $this->entries = $entries;
     }
 
-    public function render()
+    public function render(): mixed
     {
         return view('ai-translator::livewire.translator.logs');
     }

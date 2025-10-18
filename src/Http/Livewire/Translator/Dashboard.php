@@ -58,7 +58,7 @@ class Dashboard extends Component
         $this->refreshEntries();
     }
 
-    public function render()
+    public function render(): mixed
     {
         return view('ai-translator::livewire.translator.dashboard');
     }
