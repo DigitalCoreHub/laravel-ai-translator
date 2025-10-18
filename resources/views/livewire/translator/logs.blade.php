@@ -27,7 +27,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
-                        @forelse ($entries as $item)
+                        @forelse (($entries ?? []) as $item)
                             <tr class="bg-white/80 transition hover:bg-slate-50 dark:bg-slate-900/60 dark:hover:bg-slate-900">
                                 <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ $item['executed_at'] ? \Illuminate\Support\Carbon::parse($item['executed_at'])->format('Y-m-d H:i:s') : '-' }}</td>
                                 <td class="px-4 py-3 font-medium">{{ strtoupper($item['from']) }} → {{ strtoupper($item['to']) }}</td>

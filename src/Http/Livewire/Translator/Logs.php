@@ -51,6 +51,7 @@ class Logs extends Component
 
     public function render(): mixed
     {
-        return view('ai-translator::livewire.translator.logs');
+        return view('ai-translator::livewire.translator.logs')
+            ->layout('ai-translator::layouts.app');
     }
 }
