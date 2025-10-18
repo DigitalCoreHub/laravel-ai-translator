@@ -11,7 +11,7 @@ use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAIProvider;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationCache;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
 use Illuminate\Support\ServiceProvider;
-use Livewire\Volt;
+use Livewire\Volt\Volt;
 
 /**
  * Bootstrap bindings and configuration for the AI translator package.
