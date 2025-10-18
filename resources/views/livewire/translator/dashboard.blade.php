@@ -95,9 +95,9 @@
                                 </td>
                                 <td class="px-4 py-3 text-right">
                                     <div class="flex justify-end gap-2">
-                                        <button wire:click="translateKey({{ @js($entry['file']) }}, {{ @js($entry['key']) }})" class="rounded-lg bg-sky-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-300">Çevir</button>
-                                        <button wire:click="retranslateKey({{ @js($entry['file']) }}, {{ @js($entry['key']) }})" class="rounded-lg bg-amber-500 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-300">Yeniden</button>
-                                        <button wire:click="edit({{ @js($entry['file']) }}, {{ @js($entry['key']) }})" class="rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100">Düzenle</button>
+                                        <button wire:click="translateKey(@js($entry['file']), @js($entry['key']))" class="rounded-lg bg-sky-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-300">Çevir</button>
+                                        <button wire:click="retranslateKey(@js($entry['file']), @js($entry['key']))" class="rounded-lg bg-amber-500 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-300">Yeniden</button>
+                                        <button wire:click="edit(@js($entry['file']), @js($entry['key']))" class="rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-slate-100">Düzenle</button>
                                     </div>
                                 </td>
                             </tr>
