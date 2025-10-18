@@ -163,6 +163,8 @@ class TranslateCommand extends Command
             $reports[] = [
                 'from' => $from,
                 'to' => $to,
+                'provider' => $providerOverride ?? config('ai-translator.provider', 'openai'),
+                'executed_at' => now()->toIso8601String(),
                 'files' => $result['report'],
             ];
 
@@ -220,7 +222,17 @@ class TranslateCommand extends Command
             $this->filesystem->makeDirectory($directory, 0755, true);
         }
 
-        $payload = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $existing = [];
+
+        if ($this->filesystem->exists($logPath)) {
+            $decoded = json_decode($this->filesystem->get($logPath), true);
+
+            if (is_array($decoded)) {
+                $existing = $decoded;
+            }
+        }
+
+        $payload = json_encode(array_values(array_merge($existing, $report)), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
         $this->filesystem->put($logPath, $payload.PHP_EOL);
     }

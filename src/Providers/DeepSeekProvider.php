@@ -16,14 +16,28 @@ class DeepSeekProvider implements TranslationProvider
     {
         $apiKey = $this->config['api_key'] ?? env('DEEPSEEK_API_KEY');
         $model = $this->config['model'] ?? env('DEEPSEEK_MODEL', 'deepseek-chat');
+        $baseUrl = rtrim($this->config['base_url'] ?? env('DEEPSEEK_API_BASE', 'https://api.deepseek.com/v1'), '/');
+        $endpoint = $baseUrl.'/chat/completions';
+
+        if (! $apiKey) {
+            throw new RuntimeException('DeepSeek API key is missing.');
+        }
+
+        $systemPrompt = sprintf(
+            'Translate from %s to %s. Keep HTML tags, placeholders, and formatting intact. Return only translated text.',
+            $from ?? 'auto',
+            $to ?? 'auto'
+        );
 
         $response = Http::withToken($apiKey)
-            ->post('https://api.deepseek.com/v1/chat/completions', [
+            ->acceptJson()
+            ->asJson()
+            ->post($endpoint, [
                 'model' => $model,
                 'messages' => [
                     [
                         'role' => 'system',
-                        'content' => "Translate from {$from} to {$to}. Return only translated text.",
+                        'content' => $systemPrompt,
                     ],
                     [
                         'role' => 'user',

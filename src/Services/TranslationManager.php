@@ -6,6 +6,7 @@ use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\Finder\Finder;
 use Throwable;
@@ -46,6 +47,197 @@ class TranslationManager
             ? [$this->resolveLanguageRoot($basePath)]
             : $paths
         );
+    }
+
+    /**
+     * Retrieve configured provider names.
+     * Yapılandırılan sağlayıcı adlarını döndürür.
+     *
+     * @return array<int, string>
+     */
+    public function availableProviders(): array
+    {
+        return array_keys($this->providers);
+    }
+
+    /**
+     * Gather available locales from configured paths.
+     * Yapılandırılmış yollardan mevcut yerelleri toplar.
+     *
+     * @return array<int, string>
+     */
+    public function availableLocales(): array
+    {
+        $locales = [];
+
+        foreach ($this->paths as $root) {
+            if ($this->filesystem->isDirectory($root)) {
+                foreach ($this->filesystem->directories($root) as $directory) {
+                    $locales[] = basename($directory);
+                }
+
+                foreach ($this->filesystem->files($root) as $file) {
+                    if (str_ends_with($file, '.json')) {
+                        $locales[] = basename($file, '.json');
+                    }
+                }
+            }
+        }
+
+        $locales = array_filter($locales, static fn ($locale) => is_string($locale) && $locale !== '');
+
+        sort($locales);
+
+        return array_values(array_unique($locales));
+    }
+
+    /**
+     * Gather translation entries between locales.
+     * Yereller arasında çeviri kayıtlarını toplar.
+     *
+     * @return array<int, array{file: string, key: string, source: string, target: string, status: string}>
+     */
+    public function gatherEntries(string $from, string $to): array
+    {
+        $entries = [];
+
+        foreach ($this->paths as $root) {
+            $sourceDirectory = rtrim($root, '/').'/'.$from;
+            $targetDirectory = rtrim($root, '/').'/'.$to;
+
+            if ($this->filesystem->isDirectory($sourceDirectory)) {
+                foreach ($this->gatherPhpFiles($sourceDirectory) as $relativeFile) {
+                    $sourceFile = $sourceDirectory.'/'.$relativeFile;
+
+                    if (! $this->filesystem->exists($sourceFile)) {
+                        continue;
+                    }
+
+                    $targetFile = $targetDirectory.'/'.$relativeFile;
+                    $source = $this->readPhp($sourceFile);
+                    $target = $this->filesystem->exists($targetFile)
+                        ? $this->readPhp($targetFile)
+                        : [];
+
+                    $entries = array_merge($entries, $this->buildEntries(
+                        $this->relativePath($targetFile),
+                        $this->flatten($source),
+                        $this->flatten($target)
+                    ));
+                }
+            }
+
+            $sourceJson = $sourceDirectory.'.json';
+
+            if ($this->filesystem->exists($sourceJson)) {
+                $targetJson = $targetDirectory.'.json';
+                $source = $this->readJson($sourceJson);
+                $target = $this->filesystem->exists($targetJson)
+                    ? $this->readJson($targetJson)
+                    : [];
+
+                $entries = array_merge($entries, $this->buildEntries(
+                    $this->relativePath($targetJson),
+                    $this->flatten($source),
+                    $this->flatten($target)
+                ));
+            }
+        }
+
+        usort($entries, static function (array $a, array $b) {
+            return [$a['file'], $a['key']] <=> [$b['file'], $b['key']];
+        });
+
+        return $entries;
+    }
+
+    /**
+     * Locate a single translation entry by file and key.
+     * Belirli bir dosya ve anahtar için çeviri kaydını bulur.
+     */
+    public function findEntry(string $relativePath, string $key, string $from, string $to): ?array
+    {
+        foreach ($this->gatherEntries($from, $to) as $entry) {
+            if ($entry['file'] === $relativePath && $entry['key'] === $key) {
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Update a single translation value on disk.
+     * Disk üzerindeki tekil bir çeviri değerini günceller.
+     */
+    public function updateTranslation(string $relativePath, string $key, string $value): void
+    {
+        $path = $this->absolutePath($relativePath);
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        $this->initializeTargetFile($path, $extension === 'json' ? 'json' : 'php', false);
+
+        if ($extension === 'json') {
+            $data = $this->filesystem->exists($path)
+                ? $this->readJson($path)
+                : [];
+            $flat = $this->flatten($data);
+            $flat[$key] = $value;
+            $data = $this->expand($flat);
+            $this->writeJson($path, $data);
+
+            return;
+        }
+
+        $data = $this->filesystem->exists($path)
+            ? $this->readPhp($path)
+            : [];
+
+        $flat = $this->flatten($data);
+        $flat[$key] = $value;
+        $data = $this->expand($flat);
+
+        $this->writePhp($path, $data);
+    }
+
+    /**
+     * Translate a plain text payload using configured providers.
+     * Yapılandırılmış sağlayıcıları kullanarak düz metin çevirisi yapar.
+     *
+     * @return array{translation: string, provider: string, cache_hit: bool, duration: float}
+     */
+    public function translateText(string $text, string $from, string $to, ?string $provider = null, bool $force = false): array
+    {
+        if ($force) {
+            $targets = $provider ? [$provider] : $this->availableProviders();
+
+            foreach ($targets as $name) {
+                $this->cache->forget($name, $from, $to, $text);
+            }
+        }
+
+        $order = $this->resolveProviderOrder($provider);
+
+        return $this->performTranslation($text, $from, $to, $order);
+    }
+
+    /**
+     * Test whether a provider can translate between locales.
+     * Bir sağlayıcının yereller arasında çeviri yapabildiğini test eder.
+     */
+    public function testProvider(string $provider, string $from, string $to): bool
+    {
+        if (! isset($this->providers[$provider])) {
+            throw new InvalidArgumentException("Provider [{$provider}] is not configured.");
+        }
+
+        try {
+            $result = $this->translateText('AI translator connectivity test', $from, $to, $provider);
+        } catch (Throwable $exception) {
+            return false;
+        }
+
+        return isset($result['translation']) && $result['translation'] !== '';
     }
 
     /**
@@ -329,6 +521,36 @@ class TranslationManager
         }
 
         return [$missing, $translated, $updated, $preview, $reviews, $stats];
+    }
+
+    /**
+     * Build entry records for the dashboard.
+     * Panel için kayıt oluşturur.
+     *
+     * @param  array<string, mixed>  $source
+     * @param  array<string, mixed>  $target
+     * @return array<int, array{file: string, key: string, source: string, target: string, status: string}>
+     */
+    protected function buildEntries(string $relativePath, array $source, array $target): array
+    {
+        $entries = [];
+
+        foreach ($source as $key => $value) {
+            $targetValue = $target[$key] ?? '';
+            $status = array_key_exists($key, $target)
+                ? (trim((string) $targetValue) === '' ? 'empty' : 'translated')
+                : 'missing';
+
+            $entries[] = [
+                'file' => $relativePath,
+                'key' => (string) $key,
+                'source' => (string) $value,
+                'target' => (string) $targetValue,
+                'status' => $status,
+            ];
+        }
+
+        return $entries;
     }
 
     /**
@@ -782,5 +1004,14 @@ class TranslationManager
     protected function relativePath(string $path): string
     {
         return ltrim(Str::after($path, rtrim($this->basePath, '/').'/'), '/');
+    }
+
+    /**
+     * Resolve an absolute path from a repository relative reference.
+     * Depoya göreli bir referanstan mutlak yol çözümler.
+     */
+    protected function absolutePath(string $relativePath): string
+    {
+        return rtrim($this->basePath, '/').'/'.ltrim($relativePath, '/');
     }
 }
