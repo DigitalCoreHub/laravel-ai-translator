@@ -1,10 +1,10 @@
 # 🧠 Laravel AI Translator / Laravel AI Çevirmen
 
 Laravel AI Translator is a **Laravel 12** compatible package that scans your language files, detects missing keys, and automatically generates translations using multiple AI providers — **OpenAI**, **DeepL**, **Google Translate**, and **DeepSeek**.
-With **v0.5**, the Livewire-powered panel now ships with a secure authentication layer, login form, and access logs on top of the CLI toolkit.
+With **v0.5**, the Livewire-powered panel is integrated with Laravel's authentication system, e-mail allowlists, and granular access logs on top of the CLI toolkit.
 
 Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın dil dosyalarını tarar, eksik çeviri anahtarlarını tespit eder ve **OpenAI**, **DeepL**, **Google Translate** veya **DeepSeek** API’lerini kullanarak bu eksikleri otomatik olarak tamamlar.
-**v0.5** sürümü ile Livewire tabanlı web paneline güvenli oturum açma katmanı ve erişim logları eklendi.
+**v0.5** sürümü ile Livewire tabanlı web paneli Laravel kullanıcı doğrulaması, e-posta yetkilendirme listesi ve ayrıntılı erişim logları ile güçlendirildi.
 
 ---
 
@@ -16,7 +16,7 @@ Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın d
 - **Provider fallback**: automatic fail-over mechanism
 - **Translation cache** to prevent redundant API calls
 - **Automatic file creation** for missing locale files
-- 🔐 **Secure panel access** with login, e-mail whitelist & session management / Güvenli panel erişimi (login + e-posta yetkilendirme)
+- 🔐 **Secure panel access** with Laravel auth integration & e-mail allowlist / Güvenli panel erişimi (Laravel auth + e-posta yetkilendirme)
 - **CLI modes:** `--dry`, `--force`, `--review`
 - **Detailed JSON report** + CLI progress table
 - **Livewire 3 + Volt Dashboard** for visual management
@@ -52,8 +52,6 @@ AI_TRANSLATOR_CACHE_DRIVER=file
 AI_TRANSLATOR_PATHS="lang,resources/lang"
 AI_TRANSLATOR_AUTH_ENABLED=true
 AI_TRANSLATOR_AUTHORIZED_EMAILS=admin@digitalcorehub.com,batuhan@digitalcorehub.com
-AI_TRANSLATOR_LOGIN_EMAIL=admin@digitalcorehub.com
-AI_TRANSLATOR_LOGIN_PASSWORD=secret123
 AI_TRANSLATOR_API_AUTH=true
 ```
 
@@ -114,11 +112,23 @@ return [
     ],
 
     'auth_enabled' => (bool) env('AI_TRANSLATOR_AUTH_ENABLED', true),
-    'authorized_emails' => explode(',', env('AI_TRANSLATOR_AUTHORIZED_EMAILS', 'admin@digitalcorehub.com,batuhan@digitalcorehub.com')),
-    'login' => [
-        'email' => env('AI_TRANSLATOR_LOGIN_EMAIL', 'admin@digitalcorehub.com'),
-        'password' => env('AI_TRANSLATOR_LOGIN_PASSWORD', 'secret123'),
-    ],
+
+    'authorized_emails' => (static function () {
+        $configured = env('AI_TRANSLATOR_AUTHORIZED_EMAILS');
+
+        if (is_string($configured) && trim($configured) !== '') {
+            return collect(explode(',', $configured))
+                ->map(static fn (string $email) => trim($email))
+                ->filter()
+                ->values()
+                ->all();
+        }
+
+        return [
+            'admin@digitalcorehub.com',
+            'batuhan@digitalcorehub.com',
+        ];
+    })(),
 
     'cache_enabled' => (bool) env('AI_TRANSLATOR_CACHE_ENABLED', true),
     'cache_driver' => env('AI_TRANSLATOR_CACHE_DRIVER'),
@@ -126,7 +136,7 @@ return [
     'auto_create_missing_files' => true,
     'middleware' => ['web', 'auth', \DigitalCoreHub\LaravelAiTranslator\Http\Middleware\EnsureAiTranslatorAccess::class],
     'api_middleware' => ['api'],
-    'api_auth' => (bool) env('AI_TRANSLATOR_API_AUTH', false),
+    'api_auth' => (bool) env('AI_TRANSLATOR_API_AUTH', true),
 ];
 ```
 
@@ -150,12 +160,12 @@ php artisan ai:translate en tr --cache-clear
 ```
 
 ### Web Panel
-- Visit `/ai-translator/login` and sign in with the configured credentials
-- Only authorized e-mails (per `authorized_emails`) can access the dashboard
+- Sign in through your application's standard `/login` route using a Laravel user account.
+- Navigate to `/ai-translator`; access is restricted to the e-mail allowlist when configured.
 - Scan & translate missing keys
 - Edit manually or re-run translations
 - View logs, provider connections, and settings
-- Use the header menu to see who is signed in and to logout securely
+- Use the header menu to see who is signed in and to log out via Laravel's default form
 
 ### API (optional)
 ```http

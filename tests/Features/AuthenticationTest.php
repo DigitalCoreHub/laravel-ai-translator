@@ -1,10 +1,11 @@
 <?php
 
-use DigitalCoreHub\LaravelAiTranslator\Auth\AiTranslatorUser;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Login;
+use DigitalCoreHub\LaravelAiTranslator\Tests\Stubs\User;
+use Illuminate\Auth\Events\Login as AuthLoginEvent;
+use Illuminate\Auth\Events\Logout as AuthLogoutEvent;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Routing\RouteCollection;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
 
 it('redirects guests to the login page when auth is enabled', function () {
@@ -15,55 +16,58 @@ it('redirects guests to the login page when auth is enabled', function () {
     $response->assertRedirect(route('login'));
 });
 
-it('blocks unauthorized email addresses from accessing the panel', function () {
+it('blocks unauthorized email addresses from accessing the panel and logs the attempt', function () {
+    $filesystem = new Filesystem;
+    $filesystem->delete(storage_path('logs/ai-translator.log'));
+
     config()->set('ai-translator.auth_enabled', true);
     config()->set('ai-translator.authorized_emails', ['admin@digitalcorehub.com']);
 
-    $user = AiTranslatorUser::make('other@example.com');
+    $user = User::query()->create([
+        'name' => 'Guest User',
+        'email' => 'other@example.com',
+        'password' => Hash::make('secret'),
+    ]);
 
     $response = $this->actingAs($user)->get('/ai-translator');
 
     $response->assertForbidden();
-});
-
-it('logs in authorized users and records audit entries', function () {
-    $filesystem = new Filesystem;
-    $filesystem->deleteDirectory(storage_path('logs'));
-
-    config()->set('ai-translator.auth_enabled', true);
-    config()->set('ai-translator.authorized_emails', ['admin@digitalcorehub.com']);
-    config()->set('ai-translator.login.email', 'admin@digitalcorehub.com');
-    config()->set('ai-translator.login.password', 'secret123');
-
-    session()->start();
-
-    /** @var \DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Login $component */
-    $component = app(Login::class);
-    $component->mount();
-    $component->email = 'admin@digitalcorehub.com';
-    $component->password = 'secret123';
-
-    $component->login();
-
-    expect(Auth::check())->toBeTrue()
-        ->and(session('ai_translator_logged_in'))->toBeTrue()
-        ->and(session('ai_translator_email'))->toBe('admin@digitalcorehub.com');
-
-    $this->get('/ai-translator')->assertOk();
-
-    $logoutResponse = $this->post('/ai-translator/logout');
-    $logoutResponse->assertRedirect(route('login'));
-
-    expect(Auth::check())->toBeFalse()
-        ->and(session('ai_translator_logged_in'))->toBeNull();
 
     $logPath = storage_path('logs/ai-translator.log');
     expect(file_exists($logPath))->toBeTrue();
 
     $contents = file_get_contents($logPath);
 
-    expect($contents)->toContain('User admin@digitalcorehub.com logged into AI Translator panel.')
-        ->and($contents)->toContain('User admin@digitalcorehub.com logged out.');
+    expect($contents)->toContain('INFO: User other@example.com attempted unauthorized access to AI Translator panel.');
+});
+
+it('allows authorized users to access the panel and records audit entries', function () {
+    $filesystem = new Filesystem;
+    $filesystem->delete(storage_path('logs/ai-translator.log'));
+
+    config()->set('ai-translator.auth_enabled', true);
+    config()->set('ai-translator.authorized_emails', ['admin@digitalcorehub.com']);
+
+    $user = User::query()->create([
+        'name' => 'Admin User',
+        'email' => 'admin@digitalcorehub.com',
+        'password' => Hash::make('secret'),
+    ]);
+
+    event(new AuthLoginEvent('web', $user, false));
+
+    $this->actingAs($user)->get('/ai-translator')->assertOk();
+
+    event(new AuthLogoutEvent('web', $user));
+
+    $logPath = storage_path('logs/ai-translator.log');
+    expect(file_exists($logPath))->toBeTrue();
+
+    $contents = file_get_contents($logPath);
+
+    expect($contents)->toContain('INFO: User admin@digitalcorehub.com logged in.')
+        ->and($contents)->toContain('INFO: User admin@digitalcorehub.com accessed AI Translator panel.')
+        ->and($contents)->toContain('INFO: User admin@digitalcorehub.com logged out.');
 });
 
 it('enables sanctum protection for the API when configured', function () {

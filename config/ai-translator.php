@@ -37,11 +37,6 @@ return [
         ];
     })(),
 
-    'login' => [
-        'email' => env('AI_TRANSLATOR_LOGIN_EMAIL', 'admin@digitalcorehub.com'),
-        'password' => env('AI_TRANSLATOR_LOGIN_PASSWORD', 'secret123'),
-    ],
-
     /*
     |--------------------------------------------------------------------------
     | Providers Configuration
@@ -142,5 +137,5 @@ return [
     */
     'api_middleware' => ['api'],
 
-    'api_auth' => (bool) env('AI_TRANSLATOR_API_AUTH', false),
+    'api_auth' => (bool) env('AI_TRANSLATOR_API_AUTH', true),
 ];

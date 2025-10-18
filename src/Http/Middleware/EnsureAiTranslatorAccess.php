@@ -3,6 +3,7 @@
 namespace DigitalCoreHub\LaravelAiTranslator\Http\Middleware;
 
 use Closure;
+use DigitalCoreHub\LaravelAiTranslator\Support\AiTranslatorLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
@@ -14,25 +15,36 @@ class EnsureAiTranslatorAccess
      */
     public function handle(Request $request, Closure $next)
     {
-        if (! config('ai-translator.auth_enabled', false)) {
-            return $next($request);
-        }
-
         if (! Auth::check()) {
+            AiTranslatorLogger::info('Guest attempted unauthorized access to AI Translator panel.');
+
             if ($request->expectsJson()) {
-                abort(401, 'Authentication required.');
+                abort(401, 'Authentication required for AI Translator panel.');
             }
 
             return redirect()->route('login');
         }
 
-        $email = strtolower((string) (Auth::user()->email ?? ''));
-        $authorized = array_map('strtolower', Arr::wrap(config('ai-translator.authorized_emails', [])));
+        $user = Auth::user();
+        $email = strtolower((string) ($user->email ?? ''));
 
-        if ($authorized !== [] && ! in_array($email, $authorized, true)) {
-            abort(403, 'Unauthorized access to AI Translator panel');
+        if (config('ai-translator.auth_enabled', true)) {
+            $allowed = array_filter(array_map(
+                'strtolower',
+                Arr::wrap(config('ai-translator.authorized_emails', []))
+            ));
+
+            if ($allowed !== [] && ($email === '' || ! in_array($email, $allowed, true))) {
+                $display = $user->email ?? 'unknown';
+                AiTranslatorLogger::info(sprintf('User %s attempted unauthorized access to AI Translator panel.', $display));
+
+                abort(403, 'Unauthorized access to AI Translator panel');
+            }
         }
 
-        return $next($request);
+        return tap($next($request), function () use ($user) {
+            $display = $user->email ?? 'unknown';
+            AiTranslatorLogger::info(sprintf('User %s accessed AI Translator panel.', $display));
+        });
     }
 }
