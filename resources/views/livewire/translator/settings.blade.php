@@ -5,11 +5,14 @@
                 <h1 class="text-3xl font-semibold tracking-tight">Ayarlar</h1>
                 <p class="text-sm text-slate-500 dark:text-slate-400">Provider yapılandırmalarını görüntüleyin ve bağlantıları test edin.</p>
             </div>
-            <nav class="flex gap-2">
-                <a href="{{ route('ai-translator.dashboard') }}" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500">Panel</a>
-                <a href="{{ route('ai-translator.settings') }}" class="rounded-full bg-slate-200 px-4 py-2 text-sm font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100">Ayarlar</a>
-                <a href="{{ route('ai-translator.logs') }}" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500">Log &amp; İstatistik</a>
-            </nav>
+            <div class="flex flex-col items-end gap-3">
+                <nav class="flex gap-2">
+                    <a href="{{ route('ai-translator.dashboard') }}" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500">Panel</a>
+                    <a href="{{ route('ai-translator.settings') }}" class="rounded-full bg-slate-200 px-4 py-2 text-sm font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100">Ayarlar</a>
+                    <a href="{{ route('ai-translator.logs') }}" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500">Log &amp; İstatistik</a>
+                </nav>
+                @include('ai-translator::livewire.translator.partials.auth-info')
+            </div>
         </header>
 
         <section class="rounded-2xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/70">
