@@ -3,6 +3,7 @@
 namespace DigitalCoreHub\LaravelAiTranslator\Tests;
 
 use DigitalCoreHub\LaravelAiTranslator\AiTranslatorServiceProvider;
+use DigitalCoreHub\LaravelAiTranslator\Auth\AiTranslatorUser;
 use DigitalCoreHub\LaravelAiTranslator\Tests\Fakes\FakeProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
@@ -25,5 +26,7 @@ abstract class TestCase extends Orchestra
         $app['config']->set('ai-translator.providers.openai.class', FakeProvider::class);
         $app['config']->set('ai-translator.cache_enabled', false);
         $app['config']->set('ai-translator.paths', [base_path('lang')]);
+        $app['config']->set('session.driver', 'array');
+        $app['config']->set('auth.providers.users.model', AiTranslatorUser::class);
     }
 }

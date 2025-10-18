@@ -1,8 +1,11 @@
 <div class="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
     <div class="mx-auto max-w-3xl px-6 py-10 space-y-6">
-        <header class="space-y-2">
-            <h1 class="text-3xl font-semibold tracking-tight">Çeviri Düzenle</h1>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Dosya: <span class="font-mono">{{ $path }}</span> · Anahtar: <span class="font-mono">{{ $key }}</span></p>
+        <header class="space-y-3 md:flex md:items-start md:justify-between md:gap-6">
+            <div class="space-y-2">
+                <h1 class="text-3xl font-semibold tracking-tight">Çeviri Düzenle</h1>
+                <p class="text-sm text-slate-500 dark:text-slate-400">Dosya: <span class="font-mono">{{ $path }}</span> · Anahtar: <span class="font-mono">{{ $key }}</span></p>
+            </div>
+            @include('ai-translator::livewire.translator.partials.auth-info')
         </header>
 
         @if ($message)

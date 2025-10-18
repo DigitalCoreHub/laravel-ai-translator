@@ -14,6 +14,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Authentication Layer
+    |--------------------------------------------------------------------------
+    | Panel erişimini sınırlandırmak için kimlik doğrulama ayarları.
+    */
+    'auth_enabled' => (bool) env('AI_TRANSLATOR_AUTH_ENABLED', true),
+
+    'authorized_emails' => (static function () {
+        $configured = env('AI_TRANSLATOR_AUTHORIZED_EMAILS');
+
+        if (is_string($configured) && trim($configured) !== '') {
+            return collect(explode(',', $configured))
+                ->map(static fn (string $email) => trim($email))
+                ->filter()
+                ->values()
+                ->all();
+        }
+
+        return [
+            'admin@digitalcorehub.com',
+            'batuhan@digitalcorehub.com',
+        ];
+    })(),
+
+    'login' => [
+        'email' => env('AI_TRANSLATOR_LOGIN_EMAIL', 'admin@digitalcorehub.com'),
+        'password' => env('AI_TRANSLATOR_LOGIN_PASSWORD', 'secret123'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Providers Configuration
     |--------------------------------------------------------------------------
     | Her sağlayıcının API anahtarlarını ve yapılandırmasını burada tanımlayabilirsiniz.
@@ -98,7 +128,11 @@ return [
     |--------------------------------------------------------------------------
     | Web paneli için kullanılacak middleware zinciri.
     */
-    'middleware' => ['web'],
+    'middleware' => [
+        'web',
+        'auth',
+        \DigitalCoreHub\LaravelAiTranslator\Http\Middleware\EnsureAiTranslatorAccess::class,
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -107,4 +141,6 @@ return [
     | JSON API uç noktasında kullanılacak middleware zinciri.
     */
     'api_middleware' => ['api'],
+
+    'api_auth' => (bool) env('AI_TRANSLATOR_API_AUTH', false),
 ];

@@ -6,6 +6,7 @@ use DigitalCoreHub\LaravelAiTranslator\Commands\TranslateCommand;
 use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Dashboard;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\EditTranslation;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Login;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Logs;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Settings;
 use DigitalCoreHub\LaravelAiTranslator\Providers\DeepLProvider;
@@ -132,6 +133,7 @@ class AiTranslatorServiceProvider extends ServiceProvider
             EditTranslation::class,
             Settings::class,
             Logs::class,
+            Login::class,
         ] as $component) {
             \Livewire\Livewire::component(
                 $this->livewireComponentAlias($component),

@@ -1,10 +1,10 @@
 # 🧠 Laravel AI Translator / Laravel AI Çevirmen
 
-Laravel AI Translator is a **Laravel 12** compatible package that scans your language files, detects missing keys, and automatically generates translations using multiple AI providers — **OpenAI**, **DeepL**, **Google Translate**, and **DeepSeek**.  
-With **v0.4**, you now get a **Livewire-powered web panel** in addition to the CLI toolkit.
+Laravel AI Translator is a **Laravel 12** compatible package that scans your language files, detects missing keys, and automatically generates translations using multiple AI providers — **OpenAI**, **DeepL**, **Google Translate**, and **DeepSeek**.
+With **v0.5**, the Livewire-powered panel now ships with a secure authentication layer, login form, and access logs on top of the CLI toolkit.
 
-Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın dil dosyalarını tarar, eksik çeviri anahtarlarını tespit eder ve **OpenAI**, **DeepL**, **Google Translate** veya **DeepSeek** API’lerini kullanarak bu eksikleri otomatik olarak tamamlar.  
-**v0.4** sürümüyle CLI aracının yanı sıra Livewire tabanlı bir web paneli de sunar.
+Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın dil dosyalarını tarar, eksik çeviri anahtarlarını tespit eder ve **OpenAI**, **DeepL**, **Google Translate** veya **DeepSeek** API’lerini kullanarak bu eksikleri otomatik olarak tamamlar.
+**v0.5** sürümü ile Livewire tabanlı web paneline güvenli oturum açma katmanı ve erişim logları eklendi.
 
 ---
 
@@ -13,12 +13,13 @@ Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın d
 - Detects and fills **missing translations** automatically / Eksik çevirileri otomatik olarak tamamlar  
 - Supports both **PHP** and **JSON** language files / Hem **PHP** hem de **JSON** dosyaları  
 - **Multiple providers:** OpenAI, DeepL, Google, DeepSeek  
-- **Provider fallback**: automatic fail-over mechanism  
-- **Translation cache** to prevent redundant API calls  
-- **Automatic file creation** for missing locale files  
-- **CLI modes:** `--dry`, `--force`, `--review`  
-- **Detailed JSON report** + CLI progress table  
-- **Livewire 3 + Volt Dashboard** for visual management  
+- **Provider fallback**: automatic fail-over mechanism
+- **Translation cache** to prevent redundant API calls
+- **Automatic file creation** for missing locale files
+- 🔐 **Secure panel access** with login, e-mail whitelist & session management / Güvenli panel erişimi (login + e-posta yetkilendirme)
+- **CLI modes:** `--dry`, `--force`, `--review`
+- **Detailed JSON report** + CLI progress table
+- **Livewire 3 + Volt Dashboard** for visual management
 - **Settings page** with provider test buttons  
 - **Logs & statistics** page reading `ai-translator-report.json`  
 - **Manual edit** & save workflow  
@@ -49,6 +50,11 @@ AI_TRANSLATOR_PROVIDER=openai
 AI_TRANSLATOR_CACHE_ENABLED=true
 AI_TRANSLATOR_CACHE_DRIVER=file
 AI_TRANSLATOR_PATHS="lang,resources/lang"
+AI_TRANSLATOR_AUTH_ENABLED=true
+AI_TRANSLATOR_AUTHORIZED_EMAILS=admin@digitalcorehub.com,batuhan@digitalcorehub.com
+AI_TRANSLATOR_LOGIN_EMAIL=admin@digitalcorehub.com
+AI_TRANSLATOR_LOGIN_PASSWORD=secret123
+AI_TRANSLATOR_API_AUTH=true
 ```
 
 ### 🤖 OpenAI
@@ -107,12 +113,20 @@ return [
         ],
     ],
 
+    'auth_enabled' => (bool) env('AI_TRANSLATOR_AUTH_ENABLED', true),
+    'authorized_emails' => explode(',', env('AI_TRANSLATOR_AUTHORIZED_EMAILS', 'admin@digitalcorehub.com,batuhan@digitalcorehub.com')),
+    'login' => [
+        'email' => env('AI_TRANSLATOR_LOGIN_EMAIL', 'admin@digitalcorehub.com'),
+        'password' => env('AI_TRANSLATOR_LOGIN_PASSWORD', 'secret123'),
+    ],
+
     'cache_enabled' => (bool) env('AI_TRANSLATOR_CACHE_ENABLED', true),
     'cache_driver' => env('AI_TRANSLATOR_CACHE_DRIVER'),
     'paths' => [base_path('lang'), base_path('resources/lang')],
     'auto_create_missing_files' => true,
-    'middleware' => ['web'],
+    'middleware' => ['web', 'auth', \DigitalCoreHub\LaravelAiTranslator\Http\Middleware\EnsureAiTranslatorAccess::class],
     'api_middleware' => ['api'],
+    'api_auth' => (bool) env('AI_TRANSLATOR_API_AUTH', false),
 ];
 ```
 
@@ -136,10 +150,12 @@ php artisan ai:translate en tr --cache-clear
 ```
 
 ### Web Panel
-- Visit `/ai-translator` to access the dashboard  
-- Scan & translate missing keys  
-- Edit manually or re-run translations  
-- View logs, provider connections, and settings  
+- Visit `/ai-translator/login` and sign in with the configured credentials
+- Only authorized e-mails (per `authorized_emails`) can access the dashboard
+- Scan & translate missing keys
+- Edit manually or re-run translations
+- View logs, provider connections, and settings
+- Use the header menu to see who is signed in and to logout securely
 
 ### API (optional)
 ```http
@@ -187,16 +203,17 @@ Covers:
 
 ---
 
-## 🗓️ v0.4 Highlights
+## 🗓️ v0.5 Highlights
 
 | Feature | Description |
 |----------|--------------|
+| 🔐 **Secure Panel Access** | Login form, session control, and e-mail authorization |
+| 🧾 **Auth Logging** | Dedicated `ai-translator.log` entries for login/logout |
+| 🧭 **Guarded Routes** | Middleware-protected dashboard, edit, settings, logs |
+| 🌐 **Protected API** | Optional `auth:sanctum` requirement for `/api/translate` |
 | 🧑‍💻 **Livewire Dashboard** | Scan & translate missing keys |
 | ⚙️ **Settings Page** | Manage provider configs, test API connections |
 | 📈 **Logs & Statistics** | Show provider, duration, file history |
-| 🌐 **REST API** | Translate text via HTTP POST |
-| ✅ **Connection Checks** | One-click provider validation |
-| 🧾 **Logging** | Unified log + JSON reports |
 
 ---
 
