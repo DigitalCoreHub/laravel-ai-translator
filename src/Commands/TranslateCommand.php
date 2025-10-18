@@ -3,6 +3,8 @@
 namespace DigitalCoreHub\LaravelAiTranslator\Commands;
 
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
+use DigitalCoreHub\LaravelAiTranslator\Support\AiTranslatorLogger;
+use DigitalCoreHub\LaravelAiTranslator\Support\ReportStore;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -34,7 +36,8 @@ class TranslateCommand extends Command
 
     public function __construct(
         protected TranslationManager $manager,
-        protected Filesystem $filesystem
+        protected Filesystem $filesystem,
+        protected ReportStore $reports
     ) {
         parent::__construct();
     }
@@ -69,8 +72,6 @@ class TranslateCommand extends Command
         }
 
         $lastIndex = count($targets) - 1;
-        $reports = [];
-
         foreach ($targets as $index => $to) {
             $this->info("{$from} -> {$to} çeviri işlemi başlatılıyor…");
 
@@ -159,24 +160,21 @@ class TranslateCommand extends Command
                 $this->info('No missing translations detected.');
             }
 
-            $this->logSummary($from, $to, $result, $dryRun, $force);
-            $reports[] = [
-                'from' => $from,
-                'to' => $to,
-                'provider' => $providerOverride ?? config('ai-translator.provider', 'openai'),
-                'executed_at' => now()->toIso8601String(),
-                'files' => $result['report'],
-            ];
+            $this->logSummary($from, $to, $result, $dryRun, $force, $providerOverride);
+
+            $this->reports->appendTranslationRun(
+                $from,
+                $to,
+                $providerOverride ?? config('ai-translator.provider', 'openai'),
+                $result['report'],
+                ['executed_at' => now()->toIso8601String()]
+            );
 
             $this->info('✔ Çeviri işlemi tamamlandı!');
 
             if ($index < $lastIndex) {
                 $this->newLine();
             }
-        }
-
-        if ($reports !== []) {
-            $this->writeReport($reports);
         }
 
         return self::SUCCESS;
@@ -186,54 +184,17 @@ class TranslateCommand extends Command
      * Persist a summary of the translation run to the log file.
      * Çeviri işleminin özetini günlük dosyasına yazar.
      */
-    protected function logSummary(string $from, string $to, array $result, bool $dryRun, bool $force): void
+    protected function logSummary(string $from, string $to, array $result, bool $dryRun, bool $force, ?string $provider): void
     {
-        $logPath = storage_path('logs/ai-translator.log');
-        $directory = dirname($logPath);
-
-        if (! $this->filesystem->isDirectory($directory)) {
-            $this->filesystem->makeDirectory($directory, 0755, true);
-        }
-
-        $line = sprintf(
-            '[%s] from=%s to=%s missing=%d translated=%d dry=%s force=%s',
-            now()->toDateTimeString(),
+        AiTranslatorLogger::info(sprintf(
+            'from=%s to=%s missing=%d translated=%d dry=%s force=%s provider=%s',
             $from,
             $to,
             $result['totals']['missing'],
             $result['totals']['translated'],
             $dryRun ? 'true' : 'false',
-            $force ? 'true' : 'false'
-        );
-
-        $this->filesystem->append($logPath, $line.PHP_EOL);
-    }
-
-    /**
-     * Persist the translation report summary to disk.
-     * Çeviri raporu özetini diske yazar.
-     */
-    protected function writeReport(array $report): void
-    {
-        $logPath = storage_path('logs/ai-translator-report.json');
-        $directory = dirname($logPath);
-
-        if (! $this->filesystem->isDirectory($directory)) {
-            $this->filesystem->makeDirectory($directory, 0755, true);
-        }
-
-        $existing = [];
-
-        if ($this->filesystem->exists($logPath)) {
-            $decoded = json_decode($this->filesystem->get($logPath), true);
-
-            if (is_array($decoded)) {
-                $existing = $decoded;
-            }
-        }
-
-        $payload = json_encode(array_values(array_merge($existing, $report)), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-
-        $this->filesystem->put($logPath, $payload.PHP_EOL);
+            $force ? 'true' : 'false',
+            $provider ?? config('ai-translator.provider', 'openai')
+        ));
     }
 }

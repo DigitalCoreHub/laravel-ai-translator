@@ -4,7 +4,10 @@ use DigitalCoreHub\LaravelAiTranslator\Http\Controllers\ApiTranslateController;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Dashboard;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\EditTranslation;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Logs;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\QueueStatus;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Settings;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Sync as SyncComponent;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\WatchLogs;
 use DigitalCoreHub\LaravelAiTranslator\Http\Middleware\EnsureAiTranslatorAccess;
 use Illuminate\Support\Facades\Route;
 
@@ -19,8 +22,11 @@ Route::prefix('ai-translator')
     ->group(function () {
         Route::get('/', Dashboard::class)->name('ai-translator.dashboard');
         Route::get('/edit', EditTranslation::class)->name('ai-translator.edit');
+        Route::get('/sync', SyncComponent::class)->name('ai-translator.sync');
+        Route::get('/queue', QueueStatus::class)->name('ai-translator.queue');
         Route::get('/settings', Settings::class)->name('ai-translator.settings');
         Route::get('/logs', Logs::class)->name('ai-translator.logs');
+        Route::get('/watch-logs', WatchLogs::class)->name('ai-translator.watch');
     });
 
 $apiMiddleware = config('ai-translator.api_middleware', ['api']);

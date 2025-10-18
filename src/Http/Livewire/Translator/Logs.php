@@ -2,6 +2,7 @@
 
 namespace DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator;
 
+use DigitalCoreHub\LaravelAiTranslator\Support\ReportStore;
 use Livewire\Volt\Component;
 
 class Logs extends Component
@@ -10,22 +11,7 @@ class Logs extends Component
 
     public function mount(): void
     {
-        $filesystem = app('files');
-        $reportPath = storage_path('logs/ai-translator-report.json');
-
-        if (! $filesystem->exists($reportPath)) {
-            $this->entries = [];
-
-            return;
-        }
-
-        $payload = json_decode($filesystem->get($reportPath), true);
-
-        if (! is_array($payload)) {
-            $this->entries = [];
-
-            return;
-        }
+        $payload = app(ReportStore::class)->all();
 
         $entries = [];
 

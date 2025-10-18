@@ -6,11 +6,7 @@
                 <p class="text-sm text-slate-500 dark:text-slate-400">Çoklu provider desteği ile eksik çevirileri hızlıca tamamlayın.</p>
             </div>
             <div class="flex flex-col items-end gap-3">
-                <nav class="flex gap-2">
-                    <a href="{{ route('ai-translator.dashboard') }}" class="rounded-full bg-slate-200 px-4 py-2 text-sm font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100">Panel</a>
-                    <a href="{{ route('ai-translator.settings') }}" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500">Ayarlar</a>
-                    <a href="{{ route('ai-translator.logs') }}" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500">Log &amp; İstatistik</a>
-                </nav>
+                @include('ai-translator::livewire.translator.partials.nav')
                 @include('ai-translator::livewire.translator.partials.auth-info')
             </div>
         </header>

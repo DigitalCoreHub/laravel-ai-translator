@@ -119,6 +119,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Watcher Settings
+    |--------------------------------------------------------------------------
+    */
+    'watch_enabled' => (bool) env('AI_TRANSLATOR_WATCH_ENABLED', true),
+
+    'watch_paths' => [
+        base_path('lang'),
+        base_path('resources/lang'),
+    ],
+
+    'watch_targets' => env('AI_TRANSLATOR_WATCH_TARGETS'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue Configuration
+    |--------------------------------------------------------------------------
+    */
+    'queue_connection' => env('AI_TRANSLATOR_QUEUE', env('QUEUE_CONNECTION', 'sync')),
+    'queue_name' => env('AI_TRANSLATOR_QUEUE_NAME', 'ai-translations'),
+    'queue_max_concurrent' => (int) env('AI_TRANSLATOR_QUEUE_CONCURRENCY', 5),
+
+    /*
+    |--------------------------------------------------------------------------
     | Panel Middleware
     |--------------------------------------------------------------------------
     | Web paneli için kullanılacak middleware zinciri.

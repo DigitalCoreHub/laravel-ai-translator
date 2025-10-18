@@ -2,6 +2,18 @@
 
 All notable changes to `laravel-ai-translator` will be documented in this file.
 
+## [0.6.0] - 2024-12-09
+### Added
+- Watch mode via `php artisan ai:watch` with configurable paths/targets and dedicated watch logs.
+- Queue-backed `ProcessTranslationJob` with concurrency guard, queue monitor JSON feed, and Livewire queue dashboard.
+- Project sync command (`php artisan ai:sync`) supporting queued runs and sync history logging.
+- New Livewire screens for Sync, Queue Status, and Watch Logs plus updated navigation.
+- Configuration & environment options for watch pipeline and queue behaviour.
+
+### Changed
+- Unified report handling through `ReportStore` and expanded logging helpers.
+- Panel logging now records background operations for improved observability.
+
 ## [0.5.0] - 2024-10-22
 ### Added
 - Secure `/ai-translator` panel access guarded by Laravel `auth` middleware and the new `EnsureAiTranslatorAccess` middleware.
