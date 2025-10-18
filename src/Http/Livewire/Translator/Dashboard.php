@@ -9,15 +9,25 @@ use Throwable;
 class Dashboard extends Component
 {
     public string $from = 'en';
+
     public string $to = 'tr';
+
     public string $provider = '';
+
     public array $providers = [];
+
     public array $locales = [];
+
     public array $entries = [];
+
     public string $statusMessage = '';
+
     public string $progressLabel = '';
+
     public bool $translating = false;
+
     public int $progressTotal = 0;
+
     public int $progressDone = 0;
 
     public function mount(): void

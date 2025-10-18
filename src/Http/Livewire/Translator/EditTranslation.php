@@ -8,11 +8,17 @@ use Livewire\Volt\Component;
 class EditTranslation extends Component
 {
     public string $path = '';
+
     public string $key = '';
+
     public string $from = '';
+
     public string $to = '';
+
     public string $source = '';
+
     public string $value = '';
+
     public string $message = '';
 
     public function mount(): void

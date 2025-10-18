@@ -24,7 +24,5 @@ if (! class_exists(Component::class)) {
     /**
      * Minimal Volt component stub extending the Livewire base stub.
      */
-    abstract class Component extends \Livewire\Component
-    {
-    }
+    abstract class Component extends \Livewire\Component {}
 }
