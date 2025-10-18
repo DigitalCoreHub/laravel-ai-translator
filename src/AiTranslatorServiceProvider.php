@@ -4,6 +4,10 @@ namespace DigitalCoreHub\LaravelAiTranslator;
 
 use DigitalCoreHub\LaravelAiTranslator\Commands\TranslateCommand;
 use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Dashboard;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\EditTranslation;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Logs;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Settings;
 use DigitalCoreHub\LaravelAiTranslator\Providers\DeepLProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\DeepSeekProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\GoogleProvider;
@@ -108,11 +112,40 @@ class AiTranslatorServiceProvider extends ServiceProvider
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'ai-translator');
         $this->loadRoutesFrom(__DIR__.'/../routes/ai-translator.php');
 
+        $this->registerLivewireComponents();
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 TranslateCommand::class,
             ]);
         }
+    }
+
+    protected function registerLivewireComponents(): void
+    {
+        if (! class_exists(\Livewire\Livewire::class)) {
+            return;
+        }
+
+        foreach ([
+            Dashboard::class,
+            EditTranslation::class,
+            Settings::class,
+            Logs::class,
+        ] as $component) {
+            \Livewire\Livewire::component(
+                $this->livewireComponentAlias($component),
+                $component
+            );
+        }
+    }
+
+    protected function livewireComponentAlias(string $component): string
+    {
+        $alias = str_replace('\\', '.', $component);
+        $alias = preg_replace('/(?<!^|\.)(?=[A-Z])/', '-', $alias) ?? $alias;
+
+        return strtolower($alias);
     }
 
     /**
