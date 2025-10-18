@@ -61,7 +61,7 @@ class Dashboard extends Component
     public function render(): mixed
     {
         return view('ai-translator::livewire.translator.dashboard')
-            ->layout('ai-translator::layouts.app');
+            ->layout('ai-translator::vendor.ai-translator.layouts.app');
     }
 
     public function refreshEntries(): void
