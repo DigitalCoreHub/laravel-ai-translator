@@ -2,7 +2,19 @@
 
 All notable changes to `laravel-ai-translator` will be documented in this file.
 
-## [0.5.0] - 2024-10-22
+## [0.6.0] - 2025-12-09
+### Added
+- Watch mode via `php artisan ai:watch` with configurable paths/targets and dedicated watch logs.
+- Queue-backed `ProcessTranslationJob` with concurrency guard, queue monitor JSON feed, and Livewire queue dashboard.
+- Project sync command (`php artisan ai:sync`) supporting queued runs and sync history logging.
+- New Livewire screens for Sync, Queue Status, and Watch Logs plus updated navigation.
+- Configuration & environment options for watch pipeline and queue behaviour.
+
+### Changed
+- Unified report handling through `ReportStore` and expanded logging helpers.
+- Panel logging now records background operations for improved observability.
+
+## [0.5.0] - 2025-10-22
 ### Added
 - Secure `/ai-translator` panel access guarded by Laravel `auth` middleware and the new `EnsureAiTranslatorAccess` middleware.
 - Livewire login page with configurable credentials and authorized e-mail allow-list.
@@ -15,7 +27,7 @@ All notable changes to `laravel-ai-translator` will be documented in this file.
 - Configuration file exposes new authentication and API security options.
 - README updated with v0.5 instructions, environment variables, and highlights.
 
-## [0.4.0] - 2024-08-12
+## [0.4.0] - 2025-08-12
 ### Added
 - Livewire + Volt dashboard with scan, translate, and manual edit workflows.
 - Provider settings screen with connection tests and multi-provider support.

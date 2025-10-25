@@ -16,6 +16,9 @@ Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın d
 - **Provider fallback**: automatic fail-over mechanism
 - **Translation cache** to prevent redundant API calls
 - **Automatic file creation** for missing locale files
+- 🔄 **Automated pipeline** with watch mode + queue-backed jobs
+- 📡 **Real-time queue dashboard** (Livewire polling)
+- 🗂️ **Sync history & watch logs** for full traceability
 - 🔐 **Secure panel access** with Laravel auth integration & e-mail allowlist / Güvenli panel erişimi (Laravel auth + e-posta yetkilendirme)
 - **CLI modes:** `--dry`, `--force`, `--review`
 - **Detailed JSON report** + CLI progress table
@@ -24,6 +27,16 @@ Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın d
 - **Logs & statistics** page reading `ai-translator-report.json`  
 - **Manual edit** & save workflow  
 - Optional **REST API** (`POST /api/translate`)  
+
+---
+
+## 🔄 Automated Translation Pipeline
+
+- **Watch Mode (`php artisan ai:watch`)** — monitors `lang/` directories for PHP/JSON changes and pushes `ProcessTranslationJob` jobs to the queue. Watch targets can be configured per environment, and every detection is logged to `storage/logs/ai-translator-watch.log`.
+- **Queue-backed translations** — `ProcessTranslationJob` orchestrates background translations, respects configurable concurrency limits, and stores progress snapshots in `storage/logs/ai-translator-queue.json` for UI consumption.
+- **Project Sync (`php artisan ai:sync`)** — runs bulk translations either immediately or via queue (`--queue`) and records detailed history inside `ai-translator-report.json` + `ai-translator-sync.log`.
+- **Livewire Queue Dashboard** — `/ai-translator/queue` polls the queue state in real time, providing job status, provider usage, and duration metrics.
+- **Sync & Watch Logs** — new panel tabs surface background activity, ensuring the pipeline remains observable without tailing log files manually.
 
 ---
 
@@ -53,6 +66,11 @@ AI_TRANSLATOR_PATHS="lang,resources/lang"
 AI_TRANSLATOR_AUTH_ENABLED=true
 AI_TRANSLATOR_AUTHORIZED_EMAILS=admin@digitalcorehub.com,batuhan@digitalcorehub.com
 AI_TRANSLATOR_API_AUTH=true
+AI_TRANSLATOR_WATCH_ENABLED=true
+AI_TRANSLATOR_WATCH_TARGETS="tr,de,fr"
+AI_TRANSLATOR_QUEUE=database
+AI_TRANSLATOR_QUEUE_NAME=ai-translations
+AI_TRANSLATOR_QUEUE_CONCURRENCY=5
 ```
 
 ### 🤖 OpenAI
@@ -134,6 +152,12 @@ return [
     'cache_driver' => env('AI_TRANSLATOR_CACHE_DRIVER'),
     'paths' => [base_path('lang'), base_path('resources/lang')],
     'auto_create_missing_files' => true,
+    'watch_enabled' => (bool) env('AI_TRANSLATOR_WATCH_ENABLED', true),
+    'watch_paths' => [base_path('lang'), base_path('resources/lang')],
+    'watch_targets' => env('AI_TRANSLATOR_WATCH_TARGETS'),
+    'queue_connection' => env('AI_TRANSLATOR_QUEUE', env('QUEUE_CONNECTION', 'sync')),
+    'queue_name' => env('AI_TRANSLATOR_QUEUE_NAME', 'ai-translations'),
+    'queue_max_concurrent' => (int) env('AI_TRANSLATOR_QUEUE_CONCURRENCY', 5),
     'middleware' => ['web', 'auth', \DigitalCoreHub\LaravelAiTranslator\Http\Middleware\EnsureAiTranslatorAccess::class],
     'api_middleware' => ['api'],
     'api_auth' => (bool) env('AI_TRANSLATOR_API_AUTH', true),
@@ -188,6 +212,9 @@ Saved under:
 ```
 storage/logs/ai-translator.log
 storage/logs/ai-translator-report.json
+storage/logs/ai-translator-watch.log
+storage/logs/ai-translator-sync.log
+storage/logs/ai-translator-queue.json
 ```
 
 CLI and Web use the same TranslationManager for consistent results.

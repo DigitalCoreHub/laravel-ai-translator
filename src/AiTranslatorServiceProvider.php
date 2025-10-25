@@ -2,19 +2,26 @@
 
 namespace DigitalCoreHub\LaravelAiTranslator;
 
+use DigitalCoreHub\LaravelAiTranslator\Commands\SyncCommand;
 use DigitalCoreHub\LaravelAiTranslator\Commands\TranslateCommand;
+use DigitalCoreHub\LaravelAiTranslator\Commands\WatchCommand;
 use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Dashboard;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\EditTranslation;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\QueueStatus;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Logs;
 use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Settings;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Sync as SyncComponent;
+use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\WatchLogs;
 use DigitalCoreHub\LaravelAiTranslator\Providers\DeepLProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\DeepSeekProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\GoogleProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAIProvider;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationCache;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
+use DigitalCoreHub\LaravelAiTranslator\Support\QueueMonitor;
 use DigitalCoreHub\LaravelAiTranslator\Support\AiTranslatorLogger;
+use DigitalCoreHub\LaravelAiTranslator\Support\ReportStore;
 use Illuminate\Auth\Events\Login as AuthLoginEvent;
 use Illuminate\Auth\Events\Logout as AuthLogoutEvent;
 use Illuminate\Support\Facades\Event;
@@ -72,6 +79,14 @@ class AiTranslatorServiceProvider extends ServiceProvider
                 configuredProvider: $config['provider'] ?? 'openai',
                 autoCreateMissingFiles: $config['auto_create_missing_files'] ?? true,
             );
+        });
+
+        $this->app->singleton(ReportStore::class, function ($app) {
+            return new ReportStore($app['files']);
+        });
+
+        $this->app->singleton(QueueMonitor::class, function ($app) {
+            return new QueueMonitor($app['files']);
         });
 
         $this->app->singleton(OpenAIProvider::class, function ($app) {
@@ -140,7 +155,9 @@ class AiTranslatorServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                SyncCommand::class,
                 TranslateCommand::class,
+                WatchCommand::class,
             ]);
         }
     }
@@ -154,8 +171,11 @@ class AiTranslatorServiceProvider extends ServiceProvider
         foreach ([
             Dashboard::class,
             EditTranslation::class,
+            QueueStatus::class,
             Settings::class,
             Logs::class,
+            SyncComponent::class,
+            WatchLogs::class,
         ] as $component) {
             \Livewire\Livewire::component(
                 $this->livewireComponentAlias($component),

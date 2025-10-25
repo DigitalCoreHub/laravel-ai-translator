@@ -152,6 +152,113 @@ class TranslationManager
     }
 
     /**
+     * Translate a single relative path using the configured providers.
+     * Belirtilen göreli dosya yolunu çevir.
+     *
+     * @return array{file: string, missing: int, translated: int, stats: array<string, mixed>, report: array<string, mixed>}
+     */
+    public function translatePath(
+        string $relativePath,
+        string $from,
+        string $to,
+        ?callable $progress = null,
+        bool $force = false,
+        ?string $provider = null
+    ): array {
+        $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
+        $targetPath = $this->absolutePath($relativePath);
+        $extension = strtolower(pathinfo($targetPath, PATHINFO_EXTENSION));
+
+        $providerOrder = $this->resolveProviderOrder($provider);
+
+        $preview = [];
+        $reviews = [];
+        $stats = [
+            'providers' => [],
+            'cache_hits' => 0,
+            'cache_misses' => 0,
+            'duration' => 0.0,
+        ];
+
+        if ($extension === 'json') {
+            $sourceRelative = $this->resolveSiblingLocalePath($relativePath, $from, $to, true);
+            $sourcePath = $this->absolutePath($sourceRelative);
+
+            $source = $this->filesystem->exists($sourcePath)
+                ? $this->readJson($sourcePath)
+                : [];
+
+            $target = $this->filesystem->exists($targetPath)
+                ? $this->readJson($targetPath)
+                : [];
+
+            [$missing, $translated, $updated, $preview, $reviews, $stats] = $this->translateArray(
+                from: $from,
+                to: $to,
+                source: $source,
+                target: $target,
+                progress: $progress,
+                fileName: basename($targetPath),
+                dryRun: false,
+                force: $force,
+                providerOrder: $providerOrder
+            );
+
+            if ($updated) {
+                $this->writeJson($targetPath, $target);
+            } else {
+                $this->initializeTargetFile($targetPath, 'json', false);
+            }
+        } else {
+            $sourceRelative = $this->resolveSiblingLocalePath($relativePath, $from, $to, false);
+            $sourcePath = $this->absolutePath($sourceRelative);
+
+            $source = $this->filesystem->exists($sourcePath)
+                ? $this->readPhp($sourcePath)
+                : [];
+
+            $target = $this->filesystem->exists($targetPath)
+                ? $this->readPhp($targetPath)
+                : [];
+
+            [$missing, $translated, $updated, $preview, $reviews, $stats] = $this->translateArray(
+                from: $from,
+                to: $to,
+                source: $source,
+                target: $target,
+                progress: $progress,
+                fileName: basename($targetPath),
+                dryRun: false,
+                force: $force,
+                providerOrder: $providerOrder
+            );
+
+            if ($updated) {
+                $this->writePhp($targetPath, $target);
+            } else {
+                $this->initializeTargetFile($targetPath, 'php', false);
+            }
+        }
+
+        $report = $this->buildReportEntry(
+            path: $relativePath,
+            stats: $stats,
+            translated: $translated,
+            missing: $missing
+        );
+
+        return [
+            'file' => $relativePath,
+            'missing' => $missing,
+            'translated' => $translated,
+            'stats' => $stats,
+            'preview' => $preview,
+            'reviews' => $reviews,
+            'report' => $report,
+        ];
+    }
+
+    /**
      * Locate a single translation entry by file and key.
      * Belirli bir dosya ve anahtar için çeviri kaydını bulur.
      */
@@ -551,6 +658,30 @@ class TranslationManager
         }
 
         return $entries;
+    }
+
+    protected function resolveSiblingLocalePath(string $relativePath, string $from, string $to, bool $json): string
+    {
+        if ($json) {
+            if (str_ends_with($relativePath, '/'.$to.'.json')) {
+                return substr($relativePath, 0, -strlen($to.'.json')).$from.'.json';
+            }
+
+            return preg_replace(
+                sprintf('/%s\.json$/', preg_quote($to, '/')),
+                $from.'.json',
+                $relativePath
+            ) ?? $relativePath;
+        }
+
+        $pattern = '/\/'.$to.'\//';
+        $replacement = '/'.$from.'/';
+
+        if (preg_match($pattern, $relativePath)) {
+            return preg_replace($pattern, $replacement, $relativePath, 1) ?? $relativePath;
+        }
+
+        return $relativePath;
     }
 
     /**

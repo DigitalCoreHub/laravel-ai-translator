@@ -3,6 +3,8 @@
 namespace DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator;
 
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
+use DigitalCoreHub\LaravelAiTranslator\Support\AiTranslatorLogger;
+use DigitalCoreHub\LaravelAiTranslator\Support\ReportStore;
 use Livewire\Volt\Component;
 use Throwable;
 
@@ -165,48 +167,22 @@ class Dashboard extends Component
 
     protected function logResult(array $result, bool $force): void
     {
-        $filesystem = app('files');
-        $logPath = storage_path('logs/ai-translator.log');
-        $reportPath = storage_path('logs/ai-translator-report.json');
-
-        if (! $filesystem->isDirectory(dirname($logPath))) {
-            $filesystem->makeDirectory(dirname($logPath), 0755, true);
-        }
-
-        $line = sprintf(
-            '[%s] context=web from=%s to=%s provider=%s missing=%d translated=%d force=%s',
-            now()->toDateTimeString(),
+        AiTranslatorLogger::info(sprintf(
+            'context=web from=%s to=%s provider=%s missing=%d translated=%d force=%s',
             $this->from,
             $this->to,
             $this->provider,
             $result['totals']['missing'],
             $result['totals']['translated'],
             $force ? 'true' : 'false'
-        );
+        ));
 
-        $filesystem->append($logPath, $line.PHP_EOL);
-
-        $reports = [];
-
-        if ($filesystem->exists($reportPath)) {
-            $existing = json_decode($filesystem->get($reportPath), true);
-
-            if (is_array($existing)) {
-                $reports = $existing;
-            }
-        }
-
-        $reports[] = [
-            'from' => $this->from,
-            'to' => $this->to,
-            'provider' => $this->provider,
-            'executed_at' => now()->toIso8601String(),
-            'files' => $result['report'],
-        ];
-
-        $filesystem->put(
-            $reportPath,
-            json_encode($reports, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE).PHP_EOL
+        app(ReportStore::class)->appendTranslationRun(
+            $this->from,
+            $this->to,
+            $this->provider,
+            $result['report'],
+            ['executed_at' => now()->toIso8601String(), 'context' => 'web']
         );
     }
 
@@ -239,24 +215,14 @@ class Dashboard extends Component
 
     protected function logSingleResult(string $file, string $key, array $result, bool $force): void
     {
-        $filesystem = app('files');
-        $logPath = storage_path('logs/ai-translator.log');
-
-        if (! $filesystem->isDirectory(dirname($logPath))) {
-            $filesystem->makeDirectory(dirname($logPath), 0755, true);
-        }
-
-        $line = sprintf(
-            '[%s] context=web action=single path=%s key=%s provider=%s cache=%s force=%s',
-            now()->toDateTimeString(),
+        AiTranslatorLogger::info(sprintf(
+            'context=web action=single path=%s key=%s provider=%s cache=%s force=%s',
             $file,
             $key,
             $result['provider'] ?? $this->provider,
             ($result['cache_hit'] ?? false) ? 'hit' : 'miss',
             $force ? 'true' : 'false'
-        );
-
-        $filesystem->append($logPath, $line.PHP_EOL);
+        ));
     }
 
     protected function manager(): TranslationManager
