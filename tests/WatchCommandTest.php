@@ -14,14 +14,13 @@ it('dispatches translation jobs when watch command detects changes', function ()
 
     $this->artisan('ai:watch', [
         '--from' => 'en',
-        '--to' => ['tr'],
+        '--to' => 'tr',
         '--provider' => 'openai',
-        '--once' => true,
     ])->assertExitCode(0);
 
     Bus::assertDispatched(ProcessTranslationJob::class, function (ProcessTranslationJob $job) {
         return $job->from === 'en'
             && $job->to === 'tr'
-            && $job->relativePath === 'lang/tr/messages.php';
+            && $job->file === 'en/messages.php';
     });
 })->uses(TestCase::class);

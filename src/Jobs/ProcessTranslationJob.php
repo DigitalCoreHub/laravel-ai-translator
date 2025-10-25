@@ -4,180 +4,173 @@ namespace DigitalCoreHub\LaravelAiTranslator\Jobs;
 
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
 use DigitalCoreHub\LaravelAiTranslator\Support\AiTranslatorLogger;
-use DigitalCoreHub\LaravelAiTranslator\Support\QueueMonitor;
-use DigitalCoreHub\LaravelAiTranslator\Support\ReportStore;
-use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
+/**
+ * Process a single translation file in the background.
+ * Arka planda tek bir çeviri dosyasını işler.
+ */
 class ProcessTranslationJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, Batchable;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public string $trackingId;
+    public int $timeout = 300; // 5 minutes
+
+    public int $tries = 3;
+
+    protected string $logFile;
 
     public function __construct(
+        public string $file,
         public string $from,
         public string $to,
-        public string $relativePath,
-        public ?string $provider = null,
-        public bool $force = false,
-        ?string $trackingId = null
+        public string $provider
     ) {
-        $this->onConnection(config('ai-translator.queue_connection', config('queue.default')));
-        $this->onQueue(config('ai-translator.queue_name', 'ai-translations'));
-        $this->trackingId = $trackingId ?? (string) Str::uuid();
+        $this->logFile = 'ai-translator-sync.log';
     }
 
-    public function middleware(): array
+    /**
+     * Execute the job.
+     * İşi çalıştırır.
+     */
+    public function handle(TranslationManager $manager): void
     {
-        return [];
-    }
-
-    public function handle(TranslationManager $manager, ReportStore $reports, QueueMonitor $monitor): void
-    {
-        $jobId = $this->job?->getJobId() ?? $this->trackingId;
-
-        if (! $this->acquireSlot()) {
-            AiTranslatorLogger::queue(sprintf('Job #%s delayed due to concurrency guard.', $jobId));
-            $this->release(5);
-
-            return;
-        }
+        $startTime = microtime(true);
 
         try {
-            $monitor->markRunning((string) $jobId, [
-                'file' => $this->relativePath,
+            $this->log('Job started', [
+                'file' => $this->file,
                 'from' => $this->from,
                 'to' => $this->to,
-                'provider' => $this->determineProvider($manager),
+                'provider' => $this->provider,
             ]);
 
-            $start = microtime(true);
-
-            AiTranslatorLogger::queue(sprintf(
-                'Job #%s started for %s (%s → %s)',
-                $jobId,
-                $this->relativePath,
-                $this->from,
-                $this->to
-            ));
-
-            $processed = 0;
-
+            // Translate the file
             $result = $manager->translatePath(
-                $this->relativePath,
+                $this->file,
                 $this->from,
                 $this->to,
-                progress: function (string $file, string $key) use ($monitor, $jobId, &$processed) {
-                    $processed++;
-                    $monitor->markProgress((string) $jobId, [
-                        'last_key' => $key,
-                        'translated' => $processed,
-                    ]);
-                },
-                force: $this->force,
-                provider: $this->provider
+                null, // progress callback
+                false, // force
+                $this->provider
             );
 
-            $duration = (microtime(true) - $start) * 1000;
+            $duration = round(microtime(true) - $startTime, 2);
 
-            $provider = $this->providerFromStats($manager, $result['stats']);
-
-            $monitor->markFinished((string) $jobId, [
-                'file' => $this->relativePath,
-                'from' => $this->from,
-                'to' => $this->to,
-                'provider' => $provider,
+            $this->log('Job completed successfully', [
+                'file' => $this->file,
                 'missing' => $result['missing'],
                 'translated' => $result['translated'],
-                'progress_total' => max($result['missing'], $result['translated']),
-                'duration_ms' => round($duration, 2),
+                'duration' => $duration.'s',
+                'provider' => $this->provider,
             ]);
 
-            $reports->appendTranslationRun(
-                $this->from,
-                $this->to,
-                $provider,
-                [$result['report']],
-                ['executed_at' => now()->toIso8601String()]
-            );
+            // Update the report
+            $this->updateReport($result, $duration);
 
-            AiTranslatorLogger::queue(sprintf(
-                'Job #%s completed successfully. translated=%d missing=%d duration_ms=%.2f',
-                $jobId,
-                $result['translated'],
-                $result['missing'],
-                $duration
-            ));
-        } finally {
-            $this->releaseSlot();
+        } catch (\Exception $e) {
+            $duration = round(microtime(true) - $startTime, 2);
+
+            $this->log('Job failed', [
+                'file' => $this->file,
+                'error' => $e->getMessage(),
+                'duration' => $duration.'s',
+            ], 'error');
+
+            throw $e;
         }
     }
 
-    public function failed(?\Throwable $exception): void
+    /**
+     * Handle a job failure.
+     * İş başarısızlığını işler.
+     */
+    public function failed(\Throwable $exception): void
     {
-        $jobId = $this->job?->getJobId() ?? $this->trackingId;
-        app(QueueMonitor::class)->markFailed((string) $jobId, $exception?->getMessage() ?? 'Job failed');
-
-        AiTranslatorLogger::queue(sprintf(
-            'Job #%s failed: %s',
-            $jobId,
-            $exception?->getMessage() ?? 'unknown error'
-        ));
+        $this->log('Job failed permanently', [
+            'file' => $this->file,
+            'error' => $exception->getMessage(),
+            'attempts' => $this->attempts(),
+        ], 'error');
     }
 
-    protected function determineProvider(TranslationManager $manager): string
+    /**
+     * Log a message to the sync log file.
+     * Senkronizasyon günlük dosyasına mesaj yazar.
+     */
+    protected function log(string $message, array $context = [], string $level = 'info'): void
     {
-        return $this->provider ?? $manager->availableProviders()[0] ?? 'openai';
-    }
+        $timestamp = now()->format('Y-m-d H:i:s');
+        $jobId = $this->job ? $this->job->getJobId() : 'unknown';
+        $logMessage = "[{$timestamp}] Job #{$jobId}: {$message}";
 
-    protected function providerFromStats(TranslationManager $manager, array $stats): string
-    {
-        if ($this->provider) {
-            return $this->provider;
+        if (! empty($context)) {
+            $logMessage .= ' — '.json_encode($context, JSON_UNESCAPED_UNICODE);
         }
 
-        $providers = $stats['providers'] ?? [];
+        $logMessage .= PHP_EOL;
 
-        if (is_array($providers) && $providers !== []) {
-            return (string) array_key_first($providers);
+        Storage::append($this->logFile, $logMessage);
+
+        // Also log to Laravel's logger
+        if ($level === 'error') {
+            AiTranslatorLogger::write('ai-translator-sync.log', $message, 'error');
+        } else {
+            AiTranslatorLogger::sync($message);
+        }
+    }
+
+    /**
+     * Update the translation report.
+     * Çeviri raporunu günceller.
+     */
+    protected function updateReport(array $result, float $duration): void
+    {
+        $reportFile = 'ai-translator-report.json';
+        $reportPath = storage_path("logs/{$reportFile}");
+
+        $report = [];
+        if (file_exists($reportPath)) {
+            $report = json_decode(file_get_contents($reportPath), true) ?: [];
         }
 
-        return $this->determineProvider($manager);
+        $report[] = [
+            'timestamp' => now()->toIso8601String(),
+            'file' => $this->file,
+            'from' => $this->from,
+            'to' => $this->to,
+            'provider' => $this->provider,
+            'missing' => $result['missing'],
+            'translated' => $result['translated'],
+            'duration' => $duration,
+            'status' => 'completed',
+        ];
+
+        // Ensure directory exists
+        if (! is_dir(dirname($reportPath))) {
+            mkdir(dirname($reportPath), 0755, true);
+        }
+
+        file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
 
-    protected function acquireSlot(): bool
+    /**
+     * Get the tags that should be assigned to the job.
+     * İşe atanması gereken etiketleri döndürür.
+     */
+    public function tags(): array
     {
-        $limit = max(1, (int) config('ai-translator.queue_max_concurrent', 5));
-        $lock = Cache::lock('ai-translator:slot-lock', 5);
-        $acquired = false;
-
-        $lock->block(3, function () use ($limit, &$acquired) {
-            $running = (int) Cache::get('ai-translator:running-count', 0);
-
-            if ($running >= $limit) {
-                return;
-            }
-
-            Cache::put('ai-translator:running-count', $running + 1, 60);
-            $acquired = true;
-        });
-
-        return $acquired;
-    }
-
-    protected function releaseSlot(): void
-    {
-        Cache::lock('ai-translator:slot-lock', 5)->block(3, function (): void {
-            $running = (int) Cache::get('ai-translator:running-count', 0);
-            $running = max(0, $running - 1);
-            Cache::put('ai-translator:running-count', $running, 60);
-        });
+        return [
+            'ai-translator',
+            'file:'.$this->file,
+            'from:'.$this->from,
+            'to:'.$this->to,
+            'provider:'.$this->provider,
+        ];
     }
 }

@@ -4,157 +4,253 @@ namespace DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator;
 
 use DigitalCoreHub\LaravelAiTranslator\Jobs\ProcessTranslationJob;
 use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
-use DigitalCoreHub\LaravelAiTranslator\Support\AiTranslatorLogger;
-use DigitalCoreHub\LaravelAiTranslator\Support\QueueMonitor;
-use DigitalCoreHub\LaravelAiTranslator\Support\ReportStore;
-use Livewire\Volt\Component;
+use Illuminate\Support\Str;
+use Livewire\Component;
+use Symfony\Component\Finder\Finder;
 
+/**
+ * Sync component for bulk translation operations.
+ * Toplu çeviri işlemleri için senkronizasyon bileşeni.
+ */
 class Sync extends Component
 {
-    public string $from = '';
+    public string $from = 'en';
 
-    public array $locales = [];
+    public string $to = 'tr';
 
-    public array $providers = [];
-
-    public string $provider = '';
-
-    public array $targets = [];
+    public string $provider = 'openai';
 
     public bool $useQueue = true;
 
     public bool $force = false;
 
-    public string $statusMessage = '';
+    public array $availableLocales = [];
+
+    public array $availableProviders = [];
+
+    public array $files = [];
+
+    public bool $isProcessing = false;
+
+    public string $status = '';
+
+    public int $progress = 0;
+
+    public int $total = 0;
+
+    protected $listeners = ['refreshSync'];
 
     public function mount(): void
     {
-        $manager = $this->manager();
-        $this->locales = $manager->availableLocales();
-        $this->providers = $manager->availableProviders();
-        $this->from = config('app.locale');
-
-        if ($this->locales !== [] && ! in_array($this->from, $this->locales, true)) {
-            $this->from = $this->locales[0];
-        }
-
-        $this->provider = config('ai-translator.provider', $this->providers[0] ?? 'openai');
-
-        if ($this->provider === '' && $this->providers !== []) {
-            $this->provider = $this->providers[0];
-        }
+        $this->loadAvailableOptions();
+        $this->scanFiles();
     }
 
     public function render(): mixed
     {
-        return view('ai-translator::livewire.translator.sync')
-            ->layout('ai-translator::vendor.ai-translator.layouts.app');
+        return view('livewire.translator.sync');
     }
 
-    public function toggleQueue(): void
+    /**
+     * Load available locales and providers.
+     * Mevcut yereller ve sağlayıcıları yükler.
+     */
+    public function loadAvailableOptions(): void
     {
-        $this->useQueue = ! $this->useQueue;
+        $manager = app(TranslationManager::class);
+
+        $this->availableLocales = $manager->availableLocales();
+        $this->availableProviders = $manager->availableProviders();
+
+        // Set default provider from config
+        $this->provider = config('ai-translator.provider', 'openai');
     }
 
-    public function sync(): void
+    /**
+     * Scan for language files.
+     * Dil dosyalarını tarar.
+     */
+    public function scanFiles(): void
     {
-        $manager = $this->manager();
-        $targets = $this->resolveTargets($manager);
+        $this->files = [];
+        $paths = config('ai-translator.paths', [
+            base_path('lang'),
+            base_path('resources/lang'),
+        ]);
 
-        if ($targets === []) {
-            $this->statusMessage = 'Hedef dil seçilmedi veya bulunamadı.';
-
-            return;
-        }
-
-        if ($this->useQueue) {
-            $monitor = app(QueueMonitor::class);
-            $dispatched = 0;
-
-            foreach ($targets as $target) {
-                $files = collect($manager->gatherEntries($this->from, $target))
-                    ->pluck('file')
-                    ->unique()
-                    ->values();
-
-                foreach ($files as $file) {
-                    $job = new ProcessTranslationJob($this->from, $target, $file, $this->provider, $this->force);
-                    $monitor->markQueued($job->trackingId, [
-                        'file' => $file,
-                        'from' => $this->from,
-                        'to' => $target,
-                        'provider' => $this->provider,
-                    ]);
-
-                    AiTranslatorLogger::sync(sprintf(
-                        'Sync UI queued %s (%s → %s).',
-                        $file,
-                        $this->from,
-                        $target
-                    ));
-
-                    dispatch($job);
-                    $dispatched++;
-                }
+        foreach ($paths as $path) {
+            if (! is_dir($path)) {
+                continue;
             }
 
-            $this->statusMessage = sprintf('%d job kuyruğa eklendi.', $dispatched);
+            $sourceDir = rtrim($path, '/').'/'.$this->from;
+
+            if (! is_dir($sourceDir)) {
+                continue;
+            }
+
+            $finder = Finder::create()
+                ->files()
+                ->in($sourceDir)
+                ->name('*.php')
+                ->name('*.json')
+                ->sortByName();
+
+            foreach ($finder as $file) {
+                $relativePath = $this->getRelativePath($file->getRealPath(), $path);
+                $this->files[] = [
+                    'path' => $relativePath,
+                    'name' => basename($relativePath),
+                    'size' => $file->getSize(),
+                    'modified' => $file->getMTime(),
+                ];
+            }
+        }
+
+        $this->total = count($this->files);
+    }
+
+    /**
+     * Start the sync process.
+     * Senkronizasyon işlemini başlatır.
+     */
+    public function startSync(): void
+    {
+        $this->validate([
+            'from' => 'required|string',
+            'to' => 'required|string',
+            'provider' => 'required|string',
+        ]);
+
+        if (empty($this->files)) {
+            $this->addError('files', 'No language files found to sync.');
 
             return;
         }
 
-        $reports = app(ReportStore::class);
+        $this->isProcessing = true;
+        $this->progress = 0;
+        $this->status = 'Starting sync...';
+
+        if ($this->useQueue) {
+            $this->startQueueSync();
+        } else {
+            $this->startDirectSync();
+        }
+    }
+
+    /**
+     * Start queue-based sync.
+     * Kuyruk tabanlı senkronizasyonu başlatır.
+     */
+    protected function startQueueSync(): void
+    {
+        $queued = 0;
+
+        foreach ($this->files as $file) {
+            try {
+                ProcessTranslationJob::dispatch(
+                    $file['path'],
+                    $this->from,
+                    $this->to,
+                    $this->provider
+                );
+                $queued++;
+            } catch (\Exception $e) {
+                $this->addError('queue', "Failed to queue file {$file['path']}: {$e->getMessage()}");
+            }
+        }
+
+        $this->status = "Queued {$queued} translation jobs. Run 'php artisan queue:work --queue=ai-translations' to process them.";
+        $this->isProcessing = false;
+
+        $this->dispatch('queueStatusUpdated');
+    }
+
+    /**
+     * Start direct sync (without queue).
+     * Doğrudan senkronizasyonu başlatır (kuyruk olmadan).
+     */
+    protected function startDirectSync(): void
+    {
+        $manager = app(TranslationManager::class);
+        $processed = 0;
         $translated = 0;
 
-        foreach ($targets as $target) {
-            $result = $manager->translate(
-                $this->from,
-                $target,
-                progress: null,
-                dryRun: false,
-                force: $this->force,
-                options: ['provider' => $this->provider]
-            );
+        foreach ($this->files as $file) {
+            try {
+                $this->status = "Processing {$file['name']}...";
+                $this->progress = round((($processed + 1) / $this->total) * 100);
 
-            $reports->appendTranslationRun(
-                $this->from,
-                $target,
-                $this->provider,
-                $result['report'],
-                ['executed_at' => now()->toIso8601String(), 'context' => 'sync-ui']
-            );
+                $result = $manager->translatePath(
+                    $file['path'],
+                    $this->from,
+                    $this->to,
+                    null, // progress callback
+                    $this->force,
+                    $this->provider
+                );
 
-            AiTranslatorLogger::sync(sprintf(
-                'Sync UI completed %s → %s missing=%d translated=%d force=%s',
-                strtoupper($this->from),
-                strtoupper($target),
-                $result['totals']['missing'],
-                $result['totals']['translated'],
-                $this->force ? 'true' : 'false'
-            ));
+                $translated += $result['translated'];
+                $processed++;
 
-            $translated += $result['totals']['translated'];
+            } catch (\Exception $e) {
+                $this->addError('sync', "Failed to process file {$file['path']}: {$e->getMessage()}");
+            }
         }
 
-        $this->statusMessage = sprintf('%d anahtar başarıyla senkronize edildi.', $translated);
+        $this->status = "Sync completed! Processed {$processed} files, translated {$translated} keys.";
+        $this->isProcessing = false;
+        $this->progress = 100;
     }
 
-    protected function manager(): TranslationManager
+    /**
+     * Cancel the sync process.
+     * Senkronizasyon işlemini iptal eder.
+     */
+    public function cancelSync(): void
     {
-        return app(TranslationManager::class);
+        $this->isProcessing = false;
+        $this->status = 'Sync cancelled.';
+        $this->progress = 0;
     }
 
-    protected function resolveTargets(TranslationManager $manager): array
+    /**
+     * Refresh the sync component.
+     * Senkronizasyon bileşenini yeniler.
+     */
+    public function refreshSync(): void
     {
-        $targets = $this->targets;
+        $this->scanFiles();
+        $this->reset(['isProcessing', 'status', 'progress']);
+    }
 
-        if ($targets === []) {
-            $targets = array_diff($manager->availableLocales(), [$this->from]);
-        }
+    /**
+     * Get relative path from absolute path.
+     * Mutlak yoldan göreli yol alır.
+     */
+    protected function getRelativePath(string $absolutePath, string $basePath): string
+    {
+        return ltrim(Str::after($absolutePath, rtrim($basePath, '/').'/'), '/');
+    }
 
-        return array_values(array_unique(array_filter(array_map(
-            static fn ($locale) => strtolower((string) $locale),
-            $targets
-        ))));
+    /**
+     * Get the progress percentage.
+     * İlerleme yüzdesini döndürür.
+     */
+    public function getProgressPercentageProperty(): float
+    {
+        return round($this->progress, 1);
+    }
+
+    /**
+     * Check if sync can be started.
+     * Senkronizasyonun başlatılıp başlatılamayacağını kontrol eder.
+     */
+    public function getCanStartSyncProperty(): bool
+    {
+        return ! $this->isProcessing &&
+               ! empty($this->files) &&
+               $this->from !== $this->to;
     }
 }

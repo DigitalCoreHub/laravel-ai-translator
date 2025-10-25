@@ -674,7 +674,7 @@ class TranslationManager
             ) ?? $relativePath;
         }
 
-        $pattern = '/\/'.$to.'\//';
+        $pattern = '/\/'.preg_quote($to, '/').'\//';
         $replacement = '/'.$from.'/';
 
         if (preg_match($pattern, $relativePath)) {

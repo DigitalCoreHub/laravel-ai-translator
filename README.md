@@ -30,13 +30,15 @@ Laravel AI Translator, **Laravel 12** ile uyumlu bir pakettir; uygulamanızın d
 
 ---
 
-## 🔄 Automated Translation Pipeline
+## 🔄 Automated Translation Pipeline (v0.6)
 
 - **Watch Mode (`php artisan ai:watch`)** — monitors `lang/` directories for PHP/JSON changes and pushes `ProcessTranslationJob` jobs to the queue. Watch targets can be configured per environment, and every detection is logged to `storage/logs/ai-translator-watch.log`.
-- **Queue-backed translations** — `ProcessTranslationJob` orchestrates background translations, respects configurable concurrency limits, and stores progress snapshots in `storage/logs/ai-translator-queue.json` for UI consumption.
+- **Queue-backed translations** — `ProcessTranslationJob` orchestrates background translations, respects configurable concurrency limits, and stores progress snapshots in `storage/logs/ai-translator-report.json` for UI consumption.
 - **Project Sync (`php artisan ai:sync`)** — runs bulk translations either immediately or via queue (`--queue`) and records detailed history inside `ai-translator-report.json` + `ai-translator-sync.log`.
 - **Livewire Queue Dashboard** — `/ai-translator/queue` polls the queue state in real time, providing job status, provider usage, and duration metrics.
 - **Sync & Watch Logs** — new panel tabs surface background activity, ensuring the pipeline remains observable without tailing log files manually.
+- **Real-time Progress Tracking** — Livewire components with auto-refresh show translation progress, completed jobs, and failed attempts.
+- **Comprehensive Logging** — Separate log files for watch events, sync operations, and job execution with detailed context.
 
 ---
 
@@ -169,6 +171,8 @@ return [
 ## 🧠 Usage / Kullanım
 
 ### CLI
+
+#### Basic Translation
 ```bash
 php artisan ai:translate en tr
 ```
@@ -182,6 +186,23 @@ php artisan ai:translate en tr --review   # Preview only
 php artisan ai:translate en tr --force    # Force rewrite
 php artisan ai:translate en tr --cache-clear
 ```
+
+#### Watch Mode (v0.6)
+```bash
+php artisan ai:watch --from=en --to=tr --provider=openai
+```
+→ Monitors language files for changes and automatically queues translations.
+
+#### Sync Mode (v0.6)
+```bash
+php artisan ai:sync en tr --queue --provider=openai
+```
+→ Bulk sync all language files with queue support.
+
+```bash
+php artisan ai:sync en tr fr de --queue --force
+```
+→ Sync multiple target languages with force retranslation.
 
 ### Web Panel
 - Sign in through your application's standard `/login` route using a Laravel user account.

@@ -121,6 +121,8 @@ return [
     |--------------------------------------------------------------------------
     | Watcher Settings
     |--------------------------------------------------------------------------
+    | File watching configuration for automatic translation.
+    | Otomatik çeviri için dosya izleme yapılandırması.
     */
     'watch_enabled' => (bool) env('AI_TRANSLATOR_WATCH_ENABLED', true),
 
@@ -131,14 +133,20 @@ return [
 
     'watch_targets' => env('AI_TRANSLATOR_WATCH_TARGETS'),
 
+    'watch_interval' => (int) env('AI_TRANSLATOR_WATCH_INTERVAL', 1), // seconds
+
     /*
     |--------------------------------------------------------------------------
     | Queue Configuration
     |--------------------------------------------------------------------------
+    | Queue settings for background translation processing.
+    | Arka plan çeviri işleme için kuyruk ayarları.
     */
     'queue_connection' => env('AI_TRANSLATOR_QUEUE', env('QUEUE_CONNECTION', 'sync')),
     'queue_name' => env('AI_TRANSLATOR_QUEUE_NAME', 'ai-translations'),
     'queue_max_concurrent' => (int) env('AI_TRANSLATOR_QUEUE_CONCURRENCY', 5),
+    'queue_timeout' => (int) env('AI_TRANSLATOR_QUEUE_TIMEOUT', 300), // 5 minutes
+    'queue_retry_after' => (int) env('AI_TRANSLATOR_QUEUE_RETRY_AFTER', 90), // 1.5 minutes
 
     /*
     |--------------------------------------------------------------------------

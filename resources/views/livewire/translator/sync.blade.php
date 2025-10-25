@@ -1,66 +1,191 @@
-<div class="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-    <div class="mx-auto max-w-5xl px-6 py-10 space-y-8">
-        <header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+<div class="p-6 bg-white shadow rounded-lg">
+    <h2 class="text-xl font-semibold text-gray-900 mb-6">Sync Translation Files</h2>
+
+    <form wire:submit.prevent="startSync">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <!-- Source Language -->
             <div>
-                <h1 class="text-3xl font-semibold tracking-tight">Sync Merkezi</h1>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Tüm dil dosyalarını manuel veya kuyruk destekli şekilde senkronize edin.</p>
-            </div>
-            <div class="flex flex-col items-end gap-3">
-                @include('ai-translator::livewire.translator.partials.nav')
-                @include('ai-translator::livewire.translator.partials.auth-info')
-            </div>
-        </header>
-
-        <section class="rounded-2xl border border-slate-200 bg-white/70 p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-            <div class="grid gap-4 md:grid-cols-2">
-                <label class="flex flex-col text-sm">
-                    <span class="mb-1 font-medium">Kaynak Dil</span>
-                    <select wire:model="from" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:ring focus:ring-sky-200/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-sky-400">
-                        @foreach ($locales as $locale)
-                            <option value="{{ $locale }}">{{ strtoupper($locale) }}</option>
-                        @endforeach
-                    </select>
+                <label for="from" class="block text-sm font-medium text-gray-700 mb-2">
+                    Source Language
                 </label>
-
-                <label class="flex flex-col text-sm">
-                    <span class="mb-1 font-medium">Provider</span>
-                    <select wire:model="provider" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:ring focus:ring-sky-200/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-sky-400">
-                        @foreach ($providers as $option)
-                            <option value="{{ $option }}">{{ ucfirst($option) }}</option>
-                        @endforeach
-                    </select>
-                </label>
-
-                <label class="flex flex-col text-sm md:col-span-2">
-                    <span class="mb-1 font-medium">Hedef Diller</span>
-                    <select wire:model="targets" multiple class="min-h-[140px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:ring focus:ring-sky-200/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-sky-400">
-                        @foreach ($locales as $locale)
-                            @if ($locale !== $from)
-                                <option value="{{ $locale }}">{{ strtoupper($locale) }}</option>
-                            @endif
-                        @endforeach
-                    </select>
-                    <span class="mt-1 text-xs text-slate-500 dark:text-slate-400">Boş bırakırsanız tüm diller otomatik seçilir.</span>
-                </label>
+                <select 
+                    wire:model="from" 
+                    id="from"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                    @foreach($availableLocales as $locale)
+                        <option value="{{ $locale }}">{{ strtoupper($locale) }}</option>
+                    @endforeach
+                </select>
+                @error('from') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
             </div>
 
-            <div class="mt-6 flex flex-wrap items-center gap-3">
-                <label class="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                    <input type="checkbox" wire:model="useQueue" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-900" />
-                    Kuyrukta çalıştır
+            <!-- Target Language -->
+            <div>
+                <label for="to" class="block text-sm font-medium text-gray-700 mb-2">
+                    Target Language
                 </label>
-                <label class="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                    <input type="checkbox" wire:model="force" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-900" />
-                    Mevcut çevirileri yenile
-                </label>
-                <button wire:click="sync" class="ml-auto rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white">Senkronizasyonu Başlat</button>
+                <select 
+                    wire:model="to" 
+                    id="to"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                    @foreach($availableLocales as $locale)
+                        <option value="{{ $locale }}">{{ strtoupper($locale) }}</option>
+                    @endforeach
+                </select>
+                @error('to') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
             </div>
-        </section>
 
-        @if ($statusMessage)
-            <div class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 shadow-sm dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200">
-                {{ $statusMessage }}
+            <!-- Provider -->
+            <div>
+                <label for="provider" class="block text-sm font-medium text-gray-700 mb-2">
+                    Translation Provider
+                </label>
+                <select 
+                    wire:model="provider" 
+                    id="provider"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                    @foreach($availableProviders as $providerName)
+                        <option value="{{ $providerName }}">{{ ucfirst($providerName) }}</option>
+                    @endforeach
+                </select>
+                @error('provider') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+            </div>
+
+            <!-- Processing Mode -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Processing Mode
+                </label>
+                <div class="space-y-2">
+                    <label class="flex items-center">
+                        <input 
+                            type="radio" 
+                            wire:model="useQueue" 
+                            value="1"
+                            class="mr-2 text-blue-600 focus:ring-blue-500"
+                        >
+                        <span class="text-sm text-gray-700">Queue (Background Processing)</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input 
+                            type="radio" 
+                            wire:model="useQueue" 
+                            value="0"
+                            class="mr-2 text-blue-600 focus:ring-blue-500"
+                        >
+                        <span class="text-sm text-gray-700">Direct (Immediate Processing)</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Options -->
+        <div class="mb-6">
+            <div class="flex items-center space-x-4">
+                <label class="flex items-center">
+                    <input 
+                        type="checkbox" 
+                        wire:model="force"
+                        class="mr-2 text-blue-600 focus:ring-blue-500"
+                    >
+                    <span class="text-sm text-gray-700">Force retranslation of existing translations</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- File List -->
+        @if(!empty($files))
+            <div class="mb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-3">
+                    Files to Process ({{ count($files) }})
+                </h3>
+                <div class="max-h-64 overflow-y-auto border border-gray-200 rounded-md">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    File
+                                </th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Size
+                                </th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Modified
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach($files as $file)
+                                <tr>
+                                    <td class="px-4 py-2 text-sm text-gray-900">
+                                        {{ $file['name'] }}
+                                    </td>
+                                    <td class="px-4 py-2 text-sm text-gray-500">
+                                        {{ number_format($file['size'] / 1024, 1) }} KB
+                                    </td>
+                                    <td class="px-4 py-2 text-sm text-gray-500">
+                                        {{ date('Y-m-d H:i:s', $file['modified']) }}
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
             </div>
         @endif
-    </div>
+
+        <!-- Progress Bar -->
+        @if($isProcessing)
+            <div class="mb-6">
+                <div class="flex justify-between text-sm mb-2">
+                    <span class="font-medium text-gray-700">{{ $status }}</span>
+                    <span class="text-gray-500">{{ $progressPercentage }}%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                        class="h-2.5 bg-blue-500 rounded-full transition-all duration-300"
+                        style="width: {{ $progressPercentage }}%"
+                    ></div>
+                </div>
+            </div>
+        @endif
+
+        <!-- Action Buttons -->
+        <div class="flex items-center space-x-4">
+            @if($canStartSync)
+                <button 
+                    type="submit"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                    Start Sync
+                </button>
+            @elseif($isProcessing)
+                <button 
+                    type="button"
+                    wire:click="cancelSync"
+                    class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                >
+                    Cancel
+                </button>
+            @endif
+
+            <button 
+                type="button"
+                wire:click="refreshSync"
+                class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+            >
+                Refresh
+            </button>
+        </div>
+
+        <!-- Status Message -->
+        @if($status)
+            <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p class="text-sm text-blue-800">{{ $status }}</p>
+            </div>
+        @endif
+    </form>
 </div>
