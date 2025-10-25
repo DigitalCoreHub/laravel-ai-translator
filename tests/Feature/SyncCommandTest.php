@@ -13,18 +13,18 @@ class SyncCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->testPath = storage_path('test-lang');
-        $this->filesystem = new Filesystem();
-        
+        $this->filesystem = new Filesystem;
+
         // Create test directory structure
-        $this->filesystem->makeDirectory($this->testPath . '/en', 0755, true);
-        $this->filesystem->makeDirectory($this->testPath . '/tr', 0755, true);
-        
+        $this->filesystem->makeDirectory($this->testPath.'/en', 0755, true);
+        $this->filesystem->makeDirectory($this->testPath.'/tr', 0755, true);
+
         // Create test language files
-        $this->filesystem->put($this->testPath . '/en/test.php', "<?php\n\nreturn [\n    'hello' => 'Hello World',\n    'goodbye' => 'Goodbye World',\n];\n");
-        $this->filesystem->put($this->testPath . '/en/auth.php', "<?php\n\nreturn [\n    'login' => 'Login',\n    'logout' => 'Logout',\n];\n");
-        $this->filesystem->put($this->testPath . '/tr/test.php', "<?php\n\nreturn [\n    'hello' => 'Merhaba Dünya',\n];\n");
+        $this->filesystem->put($this->testPath.'/en/test.php', "<?php\n\nreturn [\n    'hello' => 'Hello World',\n    'goodbye' => 'Goodbye World',\n];\n");
+        $this->filesystem->put($this->testPath.'/en/auth.php', "<?php\n\nreturn [\n    'login' => 'Login',\n    'logout' => 'Logout',\n];\n");
+        $this->filesystem->put($this->testPath.'/tr/test.php', "<?php\n\nreturn [\n    'hello' => 'Merhaba Dünya',\n];\n");
     }
 
     protected function tearDown(): void
@@ -33,7 +33,7 @@ class SyncCommandTest extends TestCase
         if ($this->filesystem->isDirectory($this->testPath)) {
             $this->filesystem->deleteDirectory($this->testPath);
         }
-        
+
         parent::tearDown();
     }
 
@@ -41,15 +41,15 @@ class SyncCommandTest extends TestCase
     public function it_can_sync_with_queue_mode()
     {
         Queue::fake();
-        
+
         $this->artisan('ai:sync', [
             'from' => 'en',
             'to' => 'tr',
             '--queue' => true,
-            '--paths' => $this->testPath
+            '--paths' => $this->testPath,
         ])
-        ->assertExitCode(0);
-        
+            ->assertExitCode(0);
+
         // Should queue jobs for each file
         Queue::assertPushed(\DigitalCoreHub\LaravelAiTranslator\Jobs\ProcessTranslationJob::class, 2);
     }
@@ -68,25 +68,25 @@ class SyncCommandTest extends TestCase
                     'stats' => [],
                     'preview' => [],
                     'reviews' => [],
-                    'report' => []
+                    'report' => [],
                 ]);
         });
-        
+
         $this->artisan('ai:sync', [
             'from' => 'en',
             'to' => 'tr',
-            '--paths' => $this->testPath
+            '--paths' => $this->testPath,
         ])
-        ->assertExitCode(0);
+            ->assertExitCode(0);
     }
 
     /** @test */
     public function it_validates_required_arguments()
     {
         $this->expectException(\RuntimeException::class);
-        
+
         $this->artisan('ai:sync', [
-            'from' => 'en'
+            'from' => 'en',
             // Missing 'to' argument
         ]);
     }
@@ -95,15 +95,15 @@ class SyncCommandTest extends TestCase
     public function it_handles_multiple_target_languages()
     {
         Queue::fake();
-        
+
         $this->artisan('ai:sync', [
             'from' => 'en',
             'to' => ['tr', 'es'],
             '--queue' => true,
-            '--paths' => $this->testPath
+            '--paths' => $this->testPath,
         ])
-        ->assertExitCode(0);
-        
+            ->assertExitCode(0);
+
         // Should queue jobs for each file and each target language
         Queue::assertPushed(\DigitalCoreHub\LaravelAiTranslator\Jobs\ProcessTranslationJob::class, 4);
     }
@@ -112,16 +112,16 @@ class SyncCommandTest extends TestCase
     public function it_uses_custom_provider()
     {
         Queue::fake();
-        
+
         $this->artisan('ai:sync', [
             'from' => 'en',
             'to' => 'tr',
             '--queue' => true,
             '--provider' => 'deepl',
-            '--paths' => $this->testPath
+            '--paths' => $this->testPath,
         ])
-        ->assertExitCode(0);
-        
+            ->assertExitCode(0);
+
         Queue::assertPushed(\DigitalCoreHub\LaravelAiTranslator\Jobs\ProcessTranslationJob::class, function ($job) {
             return $job->provider === 'deepl';
         });
@@ -144,17 +144,17 @@ class SyncCommandTest extends TestCase
                     'stats' => [],
                     'preview' => [],
                     'reviews' => [],
-                    'report' => []
+                    'report' => [],
                 ]);
         });
-        
+
         $this->artisan('ai:sync', [
             'from' => 'en',
             'to' => 'tr',
             '--force' => true,
-            '--paths' => $this->testPath
+            '--paths' => $this->testPath,
         ])
-        ->assertExitCode(0);
+            ->assertExitCode(0);
     }
 
     /** @test */
@@ -163,10 +163,10 @@ class SyncCommandTest extends TestCase
         $this->artisan('ai:sync', [
             'from' => 'en',
             'to' => 'tr',
-            '--paths' => '/non-existent-path'
+            '--paths' => '/non-existent-path',
         ])
-        ->assertExitCode(0)
-        ->expectsOutput('No language files found for en in the specified paths.');
+            ->assertExitCode(0)
+            ->expectsOutput('No language files found for en in the specified paths.');
     }
 
     /** @test */
@@ -175,10 +175,10 @@ class SyncCommandTest extends TestCase
         $this->artisan('ai:sync', [
             'from' => 'en',
             'to' => 'tr',
-            '--paths' => $this->testPath
+            '--paths' => $this->testPath,
         ])
-        ->assertExitCode(0);
-        
+            ->assertExitCode(0);
+
         // Check if sync log was created
         $this->assertTrue(file_exists(storage_path('logs/ai-translator-sync.log')));
     }

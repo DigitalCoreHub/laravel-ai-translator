@@ -9,8 +9,7 @@ class QueueMonitor
 {
     public function __construct(
         protected Filesystem $filesystem
-    ) {
-    }
+    ) {}
 
     public function path(): string
     {
