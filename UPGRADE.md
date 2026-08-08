@@ -148,7 +148,6 @@ If you referenced package classes directly:
 | `Services\TranslationCache` | `Cache\TranslationCache` |
 | `Services\TranslationWatcher` | `Translation\TranslationWatcher` |
 | `Jobs\ProcessTranslationJob` | `Jobs\TranslateFileJob` |
-| `Providers\OpenAIProvider` | `Providers\OpenAiProvider` (note the lowercase `i`) |
 | `Support\QueueMonitor` | *removed* — it was never called by anything |
 | `Support\AiTranslatorLogger` | *removed* — use `log_channel` config |
 | `Contracts\TranslationProvider` | same namespace, new signature (see below) |

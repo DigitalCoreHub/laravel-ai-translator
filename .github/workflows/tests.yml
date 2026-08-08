@@ -76,7 +76,9 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - run: composer install --prefer-dist --no-interaction --no-progress
+      # Kütüphanede composer.lock commit edilmiyor; install yerine update kullanıyoruz ki
+      # bağımlılıklar her koşuda bu PHP sürümüne göre çözülsün.
+      - run: composer update --prefer-dist --no-interaction --no-progress
 
       - name: Kod biçimi (Pint)
         run: vendor/bin/pint --test

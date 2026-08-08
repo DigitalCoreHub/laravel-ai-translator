@@ -7,7 +7,7 @@ use DigitalCoreHub\LaravelAiTranslator\Providers\DeepLProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\DeepSeekProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\GoogleProvider;
 use DigitalCoreHub\LaravelAiTranslator\Providers\NullProvider;
-use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAiProvider;
+use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAIProvider;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Http;
 
@@ -34,7 +34,7 @@ describe('openai', function () {
             'k1' => 'İptal',
         ]))]);
 
-        $provider = new OpenAiProvider(httpFactory(), ['api_key' => 'sk-test', 'model' => 'gpt-4o-mini']);
+        $provider = new OpenAIProvider(httpFactory(), ['api_key' => 'sk-test', 'model' => 'gpt-4o-mini']);
 
         $result = $provider->translateBatch(['k0' => 'Save', 'k1' => 'Cancel'], 'en', 'tr');
 
@@ -46,7 +46,7 @@ describe('openai', function () {
     it('json_schema ile structured output ister', function () {
         Http::fake(['api.openai.com/*' => Http::response(chatResponse(['k0' => 'Kaydet']))]);
 
-        (new OpenAiProvider(httpFactory(), ['api_key' => 'sk-test']))
+        (new OpenAIProvider(httpFactory(), ['api_key' => 'sk-test']))
             ->translateBatch(['k0' => 'Save'], 'en', 'tr');
 
         Http::assertSent(fn ($request) => $request['response_format']['type'] === 'json_schema');
@@ -58,7 +58,7 @@ describe('openai', function () {
             'uydurma' => 'Bir şey',
         ]))]);
 
-        $result = (new OpenAiProvider(httpFactory(), ['api_key' => 'sk-test']))
+        $result = (new OpenAIProvider(httpFactory(), ['api_key' => 'sk-test']))
             ->translateBatch(['k0' => 'Save'], 'en', 'tr');
 
         expect($result)->toBe(['k0' => 'Kaydet']);
@@ -69,22 +69,22 @@ describe('openai', function () {
             'choices' => [['message' => ['content' => "```json\n{\"k0\":\"Kaydet\"}\n```"]]],
         ])]);
 
-        $result = (new OpenAiProvider(httpFactory(), ['api_key' => 'sk-test']))
+        $result = (new OpenAIProvider(httpFactory(), ['api_key' => 'sk-test']))
             ->translateBatch(['k0' => 'Save'], 'en', 'tr');
 
         expect($result)->toBe(['k0' => 'Kaydet']);
     });
 
     it('api anahtarı yoksa yapılandırılmamış sayılır', function () {
-        expect((new OpenAiProvider(httpFactory(), []))->isConfigured())->toBeFalse()
-            ->and((new OpenAiProvider(httpFactory(), ['api_key' => ' ']))->isConfigured())->toBeFalse()
-            ->and((new OpenAiProvider(httpFactory(), ['api_key' => 'sk-x']))->isConfigured())->toBeTrue();
+        expect((new OpenAIProvider(httpFactory(), []))->isConfigured())->toBeFalse()
+            ->and((new OpenAIProvider(httpFactory(), ['api_key' => ' ']))->isConfigured())->toBeFalse()
+            ->and((new OpenAIProvider(httpFactory(), ['api_key' => 'sk-x']))->isConfigured())->toBeTrue();
     });
 
     it('hata durumunda sağlayıcı adıyla istisna fırlatır', function () {
         Http::fake(['api.openai.com/*' => Http::response(['error' => 'nope'], 401)]);
 
-        (new OpenAiProvider(httpFactory(), ['api_key' => 'sk-test'], ['times' => 1, 'sleep' => 0]))
+        (new OpenAIProvider(httpFactory(), ['api_key' => 'sk-test'], ['times' => 1, 'sleep' => 0]))
             ->translateBatch(['k0' => 'Save'], 'en', 'tr');
     })->throws(ProviderException::class, '[openai]');
 });

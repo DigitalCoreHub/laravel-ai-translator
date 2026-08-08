@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace DigitalCoreHub\LaravelAiTranslator\Providers;
 
-class OpenAiProvider extends AbstractChatProvider
+class OpenAIProvider extends AbstractChatProvider
 {
     public function name(): string
     {

@@ -21,7 +21,7 @@ class ProviderRegistry
 {
     /** @var array<string, class-string<TranslationProvider>> */
     protected const BUILT_IN = [
-        'openai' => OpenAiProvider::class,
+        'openai' => OpenAIProvider::class,
         'deepseek' => DeepSeekProvider::class,
         'deepl' => DeepLProvider::class,
         'google' => GoogleProvider::class,
