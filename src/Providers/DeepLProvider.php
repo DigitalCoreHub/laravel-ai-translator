@@ -1,13 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace DigitalCoreHub\LaravelAiTranslator\Providers;
 
-use Illuminate\Support\Facades\Http;
-use RuntimeException;
+use DigitalCoreHub\LaravelAiTranslator\Exceptions\ProviderException;
 
 /**
- * Translate text through the DeepL API.
- * DeepL API'si üzerinden metin çevirisi gerçekleştirir.
+ * DeepL. Zaten native batch: tek istekte text[] dizisi gönderilir, sırası korunarak döner.
  */
 class DeepLProvider extends AbstractProvider
 {
@@ -16,37 +16,81 @@ class DeepLProvider extends AbstractProvider
         return 'deepl';
     }
 
-    public function translate(string $text, ?string $from = null, ?string $to = null): string
+    public function translateBatch(array $texts, string $from, string $to): array
     {
-        $apiKey = (string) $this->config('api_key');
-
-        if ($apiKey === '') {
-            throw new RuntimeException('DeepL API key is missing.');
+        if ($texts === []) {
+            return [];
         }
+
+        $keys = array_keys($texts);
 
         $payload = [
-            'text' => [$text],
-            'target_lang' => strtoupper((string) $to),
+            'text' => array_values($texts),
+            'target_lang' => $this->normalizeTarget($to),
         ];
 
-        if ($from !== null) {
-            $payload['source_lang'] = strtoupper($from);
+        if ($from !== '') {
+            $payload['source_lang'] = strtoupper(explode('-', explode('_', $from)[0])[0]);
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => 'DeepL-Auth-Key '.$apiKey,
-        ])->asJson()->post('https://api-free.deepl.com/v2/translate', $payload);
+        $response = $this->ensureSuccessful(
+            $this->request()
+                ->withHeaders(['Authorization' => 'DeepL-Auth-Key '.$this->requireApiKey()])
+                ->asJson()
+                ->post($this->endpoint(), $payload)
+        );
 
-        if ($response->failed()) {
-            throw new RuntimeException('DeepL translation request failed.');
+        $translations = $response->json('translations');
+
+        if (! is_array($translations) || count($translations) !== count($keys)) {
+            throw ProviderException::malformedResponse(
+                $this->name(),
+                sprintf('%d çeviri beklenirken %d geldi.', count($keys), is_array($translations) ? count($translations) : 0)
+            );
         }
 
-        $translation = $response->json('translations.0.text');
+        $result = [];
 
-        if (! is_string($translation)) {
-            throw new RuntimeException('DeepL response did not contain a translation.');
+        foreach (array_values($translations) as $index => $translation) {
+            $text = is_array($translation) ? ($translation['text'] ?? null) : null;
+
+            if (is_string($text) && $text !== '') {
+                $result[$keys[$index]] = $text;
+            }
         }
 
-        return $translation;
+        return $result;
+    }
+
+    /**
+     * Ücretsiz anahtarlar ":fx" ile biter ve farklı bir alan adına gider.
+     * v0.x her zaman api-free'ye gidiyordu, yani ücretli anahtarlar hiç çalışmıyordu.
+     */
+    protected function endpoint(): string
+    {
+        $configured = $this->config('base_url');
+
+        if (is_string($configured) && trim($configured) !== '') {
+            return rtrim($configured, '/').'/v2/translate';
+        }
+
+        return str_ends_with($this->requireApiKey(), ':fx')
+            ? 'https://api-free.deepl.com/v2/translate'
+            : 'https://api.deepl.com/v2/translate';
+    }
+
+    /**
+     * DeepL hedef dili büyük harf ister ve bazı diller için bölge kodu zorunlu
+     * (EN yerine EN-GB/EN-US, PT yerine PT-BR/PT-PT).
+     */
+    protected function normalizeTarget(string $to): string
+    {
+        $normalized = strtoupper(str_replace('_', '-', $to));
+
+        return match ($normalized) {
+            'EN' => 'EN-GB',
+            'PT' => 'PT-PT',
+            default => $normalized,
+        };
     }
 }

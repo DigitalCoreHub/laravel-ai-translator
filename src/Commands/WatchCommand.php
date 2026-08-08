@@ -1,100 +1,110 @@
 <?php
 
+declare(strict_types=1);
+
 namespace DigitalCoreHub\LaravelAiTranslator\Commands;
 
-use DigitalCoreHub\LaravelAiTranslator\Services\TranslationWatcher;
+use DigitalCoreHub\LaravelAiTranslator\Translation\LocaleFileRepository;
+use DigitalCoreHub\LaravelAiTranslator\Translation\TranslationWatcher;
+use DigitalCoreHub\LaravelAiTranslator\Translation\Translator;
 use Illuminate\Console\Command;
-use Illuminate\Filesystem\Filesystem;
 
 /**
- * Watch for changes in language files and automatically translate them.
- * Dil dosyalarındaki değişiklikleri izler ve otomatik olarak çevirir.
+ * Kaynak dil dosyalarını izler, değişeni kuyruğa atar.
+ *
+ * v0.x'te izlenecek dil listesi koda gömülüydü (['en','tr','es',...]), watch_interval
+ * config'i yok sayılıyordu ve her saniye bütün ağaç baştan taranıyordu.
  */
 class WatchCommand extends Command
 {
-    /**
-     * The console command signature.
-     * Konsol komutunun imzası.
-     */
     protected $signature = 'ai:watch
-        {--from=en : Source language code}
-        {--to=tr : Target language code}
-        {--provider= : Translation provider to use}
-        {--paths= : Comma-separated list of paths to watch}';
+        {--from= : Kaynak dil kodu}
+        {--to=* : Hedef diller; boş bırakılırsa config veya dizindeki tüm diller}
+        {--provider= : Kullanılacak sağlayıcı}
+        {--only= : Sadece belirli dosya/dizin}
+        {--interval= : Tarama aralığı (saniye)}
+        {--once : Tek tur çalışıp çıkar (cron veya test için)}';
 
-    /**
-     * The console command description.
-     * Konsol komutunun açıklaması.
-     */
-    protected $description = 'Watch for changes in language files and automatically translate them';
+    protected $description = 'Dil dosyalarını izler, değişenleri çeviri kuyruğuna alır';
 
-    public function __construct(
-        protected Filesystem $filesystem
-    ) {
-        parent::__construct();
-    }
+    /** Sinyal geldiğinde döngüden temiz çıkmak için. */
+    protected bool $stopping = false;
 
-    /**
-     * Execute the console command.
-     * Konsol komutunu çalıştırır.
-     */
-    public function handle(): int
+    public function handle(Translator $translator, LocaleFileRepository $files): int
     {
-        $from = $this->option('from');
-        $to = $this->option('to');
-        $provider = $this->option('provider') ?: config('ai-translator.provider', 'openai');
-        $paths = $this->getWatchPaths();
+        $from = $this->option('from') ?: (string) config('ai-translator.source_locale', 'en');
+        $targets = $this->resolveTargets($translator, $from);
 
-        $this->info("Starting watcher for {$from} -> {$to} translation...");
-        $this->info("Provider: {$provider}");
-        $this->info('Watching paths: '.implode(', ', $paths));
-        $this->newLine();
+        if ($targets === []) {
+            $this->components->error(
+                'İzlenecek hedef dil yok. --to ile belirtin ya da config/ai-translator.php '
+                .'içindeki watch.locales listesini doldurun.'
+            );
 
-        // Ensure log directory exists
-        $logDir = storage_path('logs');
-        if (! $this->filesystem->isDirectory($logDir)) {
-            $this->filesystem->makeDirectory($logDir, 0755, true);
+            return self::INVALID;
         }
 
-        // Create watcher instance
-        $watcher = new TranslationWatcher(
-            $this->filesystem,
-            base_path(),
-            $paths,
-            $from,
-            $to,
-            $provider
-        );
+        $watcher = (new TranslationWatcher(
+            translator: $translator,
+            from: $from,
+            targets: $targets,
+            provider: $this->option('provider'),
+            only: $this->option('only'),
+            connection: config('ai-translator.queue.connection'),
+            queue: (string) config('ai-translator.queue.name', 'ai-translations'),
+        ))->onChange(function (string $file, int $jobs): void {
+            $this->components->twoColumnDetail($file, "{$jobs} iş kuyruğa alındı");
+        });
 
-        $this->info('Watcher is running. Press Ctrl+C to stop.');
-        $this->newLine();
+        $this->components->info(sprintf('%s → %s izleniyor', $from, implode(', ', $targets)));
+        $this->components->bulletList($files->existingRoots() ?: ['(dil dizini bulunamadı)']);
 
-        try {
-            $watcher->watch();
-        } catch (\Exception $e) {
-            $this->error("Watcher failed: {$e->getMessage()}");
+        if ($this->option('once')) {
+            // Tek turda "değişen" kavramı yok; her şeyi taze sayıp kuyruğa alıyoruz.
+            $this->components->info(sprintf('%d iş kuyruğa alındı.', $watcher->tick()));
 
-            return self::FAILURE;
+            return self::SUCCESS;
         }
+
+        $interval = max(1, (int) ($this->option('interval') ?: config('ai-translator.watch.interval', 2)));
+
+        $watcher->prime();
+
+        // Ctrl+C ya da supervisor'ın SIGTERM'i geldiğinde turu yarıda kesmeden çıkıyoruz;
+        // aksi halde kuyruğa yarım dosya listesi bırakabilirdik.
+        $this->trap([SIGINT, SIGTERM], function (): void {
+            $this->stopping = true;
+        });
+
+        $this->components->info(sprintf('%d sn aralıkla taranıyor. Ctrl+C ile durdurun.', $interval));
+
+        while (! $this->stopping) {
+            $watcher->tick();
+
+            sleep($interval);
+        }
+
+        $this->components->info('İzleme durduruldu.');
 
         return self::SUCCESS;
     }
 
     /**
-     * Get the paths to watch.
-     * İzlenecek yolları döndürür.
+     * @return array<int, string>
      */
-    protected function getWatchPaths(): array
+    protected function resolveTargets(Translator $translator, string $from): array
     {
-        $configuredPaths = $this->option('paths');
+        $targets = array_values(array_filter((array) $this->option('to')));
 
-        if ($configuredPaths) {
-            return array_map('trim', explode(',', $configuredPaths));
+        if ($targets === []) {
+            $configured = config('ai-translator.watch.locales', []);
+            $targets = is_array($configured) ? array_values(array_filter($configured)) : [];
         }
 
-        return config('ai-translator.watch_paths', [
-            base_path('lang'),
-            base_path('resources/lang'),
-        ]);
+        if ($targets === []) {
+            $targets = $translator->locales();
+        }
+
+        return array_values(array_filter($targets, static fn (string $locale) => $locale !== $from));
     }
 }

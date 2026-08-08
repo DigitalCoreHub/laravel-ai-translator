@@ -1,69 +1,69 @@
 <?php
 
+declare(strict_types=1);
+
 namespace DigitalCoreHub\LaravelAiTranslator\Support;
 
+use DigitalCoreHub\LaravelAiTranslator\Data\TranslationRun;
 use Illuminate\Filesystem\Filesystem;
 
+/**
+ * Koşu özetlerini tek bir JSON dosyasına yazar.
+ *
+ * "keep" sınırı var: v0.x'te rapor dosyası sonsuza kadar büyüyordu, birkaç bin koşudan
+ * sonra dosyayı okuyan her şey yavaşlıyordu.
+ */
 class ReportStore
 {
     public function __construct(
-        protected Filesystem $filesystem
+        protected Filesystem $filesystem,
+        protected string $path,
+        protected int $keep = 50,
+        protected bool $enabled = true,
     ) {}
 
     public function path(): string
     {
-        return storage_path('logs/ai-translator-report.json');
+        return $this->path;
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function all(): array
     {
-        $path = $this->path();
-
-        if (! $this->filesystem->exists($path)) {
+        if (! $this->filesystem->exists($this->path)) {
             return [];
         }
 
-        $decoded = json_decode($this->filesystem->get($path), true);
+        $decoded = json_decode((string) $this->filesystem->get($this->path), true);
 
-        if (! is_array($decoded)) {
-            return [];
-        }
-
-        return $decoded;
+        return is_array($decoded) ? array_values(array_filter($decoded, 'is_array')) : [];
     }
 
-    public function append(array $run): void
+    public function record(TranslationRun $run): void
     {
-        $runs = $this->all();
-        $runs[] = $run;
-
-        $path = $this->path();
-
-        if (! $this->filesystem->isDirectory(dirname($path))) {
-            $this->filesystem->makeDirectory(dirname($path), 0755, true, true);
+        if (! $this->enabled) {
+            return;
         }
 
+        $runs = $this->all();
+        $runs[] = ['executed_at' => now()->toIso8601String()] + $run->toArray();
+
+        if ($this->keep > 0 && count($runs) > $this->keep) {
+            $runs = array_slice($runs, -$this->keep);
+        }
+
+        $this->filesystem->ensureDirectoryExists(dirname($this->path));
+
         $this->filesystem->put(
-            $path,
-            json_encode($runs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE).PHP_EOL
+            $this->path,
+            json_encode(array_values($runs), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR).PHP_EOL
         );
     }
 
-    public function appendTranslationRun(
-        string $from,
-        string $to,
-        string $provider,
-        array $files,
-        array $extra = []
-    ): void {
-        $payload = array_merge($extra, [
-            'from' => $from,
-            'to' => $to,
-            'provider' => $provider,
-            'executed_at' => $extra['executed_at'] ?? now()->toIso8601String(),
-            'files' => $files,
-        ]);
-
-        $this->append($payload);
+    public function clear(): void
+    {
+        $this->filesystem->delete($this->path);
     }
 }

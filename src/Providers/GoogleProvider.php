@@ -1,13 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace DigitalCoreHub\LaravelAiTranslator\Providers;
 
-use Illuminate\Support\Facades\Http;
-use RuntimeException;
+use DigitalCoreHub\LaravelAiTranslator\Exceptions\ProviderException;
 
 /**
- * Translate text using Google Cloud Translation API v2.
- * Google Cloud Translation API v2 ile metin çevirir.
+ * Google Cloud Translation v2. q[] ile toplu istek destekliyor, sıra korunur.
  */
 class GoogleProvider extends AbstractProvider
 {
@@ -16,37 +16,60 @@ class GoogleProvider extends AbstractProvider
         return 'google';
     }
 
-    public function translate(string $text, ?string $from = null, ?string $to = null): string
+    public function translateBatch(array $texts, string $from, string $to): array
     {
-        $apiKey = (string) $this->config('api_key');
-
-        if ($apiKey === '') {
-            throw new RuntimeException('Google Translate API key is missing.');
+        if ($texts === []) {
+            return [];
         }
 
-        $query = [
-            'q' => $text,
+        $keys = array_keys($texts);
+
+        $payload = [
+            'q' => array_values($texts),
             'target' => $to,
             'format' => 'text',
-            'key' => $apiKey,
         ];
 
-        if ($from !== null) {
-            $query['source'] = $from;
+        if ($from !== '') {
+            $payload['source'] = $from;
         }
 
-        $response = Http::asJson()->post('https://translation.googleapis.com/language/translate/v2', $query);
+        $response = $this->ensureSuccessful(
+            $this->request()
+                ->asJson()
+                ->post($this->endpoint().'?key='.urlencode($this->requireApiKey()), $payload)
+        );
 
-        if ($response->failed()) {
-            throw new RuntimeException('Google translation request failed.');
+        $translations = $response->json('data.translations');
+
+        if (! is_array($translations) || count($translations) !== count($keys)) {
+            throw ProviderException::malformedResponse(
+                $this->name(),
+                sprintf('%d çeviri beklenirken %d geldi.', count($keys), is_array($translations) ? count($translations) : 0)
+            );
         }
 
-        $translation = $response->json('data.translations.0.translatedText');
+        $result = [];
 
-        if (! is_string($translation)) {
-            throw new RuntimeException('Google response did not contain a translation.');
+        foreach (array_values($translations) as $index => $translation) {
+            $text = is_array($translation) ? ($translation['translatedText'] ?? null) : null;
+
+            if (! is_string($text) || $text === '') {
+                continue;
+            }
+
+            // format=text göndersek bile Google &#39; gibi entity'ler döndürebiliyor.
+            $result[$keys[$index]] = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         }
 
-        return html_entity_decode($translation, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return $result;
+    }
+
+    protected function endpoint(): string
+    {
+        return rtrim(
+            (string) $this->config('base_url', 'https://translation.googleapis.com/language/translate/v2'),
+            '/'
+        );
     }
 }

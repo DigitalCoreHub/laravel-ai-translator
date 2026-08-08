@@ -1,51 +1,86 @@
 <?php
 
+declare(strict_types=1);
+
 namespace DigitalCoreHub\LaravelAiTranslator\Tests;
 
 use DigitalCoreHub\LaravelAiTranslator\AiTranslatorServiceProvider;
-use DigitalCoreHub\LaravelAiTranslator\Tests\Fakes\FakeProvider;
-use DigitalCoreHub\LaravelAiTranslator\Tests\Stubs\User;
+use Illuminate\Filesystem\Filesystem;
 use Orchestra\Testbench\TestCase as Orchestra;
 
-/**
- * Base test case for the Laravel AI Translator package.
- * Laravel AI Translator paketi için temel test sınıfı.
- */
 abstract class TestCase extends Orchestra
 {
+    protected string $langPath;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->loadLaravelMigrations();
+        $this->langPath = $this->app->basePath('lang');
+
+        (new Filesystem)->ensureDirectoryExists($this->langPath);
     }
 
-    protected function defineRoutes($router): void
+    protected function tearDown(): void
     {
-        $router->middleware('web')->group(static function () use ($router) {
-            $router->get('/login', static fn () => 'Login')->name('login');
-        });
+        (new Filesystem)->deleteDirectory($this->langPath);
+
+        parent::tearDown();
     }
 
-    protected function getPackageProviders($app)
+    protected function getPackageProviders($app): array
     {
         return [AiTranslatorServiceProvider::class];
     }
 
-    protected function resolveApplicationConfiguration($app)
+    protected function defineEnvironment($app): void
     {
-        parent::resolveApplicationConfiguration($app);
+        $app['config']->set('ai-translator.provider', 'null');
+        $app['config']->set('ai-translator.fallback', []);
+        $app['config']->set('ai-translator.paths', [$app->basePath('lang')]);
+        $app['config']->set('ai-translator.cache.enabled', false);
+        $app['config']->set('cache.default', 'array');
+    }
 
-        $app['config']->set('ai-translator.provider', 'openai');
-        $app['config']->set('ai-translator.providers.openai.class', FakeProvider::class);
-        $app['config']->set('ai-translator.cache_enabled', false);
-        $app['config']->set('ai-translator.paths', [base_path('lang')]);
-        $app['config']->set('session.driver', 'array');
-        $app['config']->set('auth.providers.users.model', User::class);
-        $app['config']->set('auth.defaults.guard', 'web');
-        $app['config']->set('auth.guards.web', [
-            'driver' => 'session',
-            'provider' => 'users',
-        ]);
+    /**
+     * Test dil dosyası yazar. İçerik dizi ise PHP, string ise ham yazılır.
+     *
+     * @param  array<array-key, mixed>|string  $contents
+     */
+    protected function writeLangFile(string $relative, array|string $contents): string
+    {
+        $path = $this->langPath.'/'.ltrim($relative, '/');
+
+        (new Filesystem)->ensureDirectoryExists(dirname($path));
+
+        if (is_string($contents)) {
+            file_put_contents($path, $contents);
+
+            return $path;
+        }
+
+        if (str_ends_with($relative, '.json')) {
+            file_put_contents($path, json_encode($contents, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+            return $path;
+        }
+
+        file_put_contents($path, '<?php return '.var_export($contents, true).';');
+
+        return $path;
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    protected function readLangFile(string $relative): array
+    {
+        $path = $this->langPath.'/'.ltrim($relative, '/');
+
+        if (str_ends_with($relative, '.json')) {
+            return json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        }
+
+        return (static fn (string $file) => require $file)($path);
     }
 }

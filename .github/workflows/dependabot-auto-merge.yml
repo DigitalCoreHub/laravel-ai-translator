@@ -67,6 +67,13 @@ jobs:
               labels: ['dependencies'],
             });
 
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:v2
+
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 

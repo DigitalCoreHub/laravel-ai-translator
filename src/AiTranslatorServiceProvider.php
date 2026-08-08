@@ -1,229 +1,172 @@
 <?php
 
+declare(strict_types=1);
+
 namespace DigitalCoreHub\LaravelAiTranslator;
 
-use DigitalCoreHub\LaravelAiTranslator\Commands\SyncCommand;
+use DigitalCoreHub\LaravelAiTranslator\Cache\TranslationCache;
+use DigitalCoreHub\LaravelAiTranslator\Commands\CacheClearCommand;
+use DigitalCoreHub\LaravelAiTranslator\Commands\StatusCommand;
 use DigitalCoreHub\LaravelAiTranslator\Commands\TranslateCommand;
 use DigitalCoreHub\LaravelAiTranslator\Commands\WatchCommand;
-use DigitalCoreHub\LaravelAiTranslator\Contracts\TranslationProvider;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Dashboard;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\EditTranslation;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Logs;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\QueueStatus;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Settings;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\Sync as SyncComponent;
-use DigitalCoreHub\LaravelAiTranslator\Http\Livewire\Translator\WatchLogs;
-use DigitalCoreHub\LaravelAiTranslator\Providers\DeepLProvider;
-use DigitalCoreHub\LaravelAiTranslator\Providers\DeepSeekProvider;
-use DigitalCoreHub\LaravelAiTranslator\Providers\GoogleProvider;
-use DigitalCoreHub\LaravelAiTranslator\Providers\OpenAIProvider;
-use DigitalCoreHub\LaravelAiTranslator\Services\TranslationCache;
-use DigitalCoreHub\LaravelAiTranslator\Services\TranslationManager;
-use DigitalCoreHub\LaravelAiTranslator\Support\AiTranslatorLogger;
-use DigitalCoreHub\LaravelAiTranslator\Support\QueueMonitor;
+use DigitalCoreHub\LaravelAiTranslator\Providers\ProviderChain;
+use DigitalCoreHub\LaravelAiTranslator\Providers\ProviderRegistry;
 use DigitalCoreHub\LaravelAiTranslator\Support\ReportStore;
-use Illuminate\Auth\Events\Login as AuthLoginEvent;
-use Illuminate\Auth\Events\Logout as AuthLogoutEvent;
-use Illuminate\Support\Facades\Event;
+use DigitalCoreHub\LaravelAiTranslator\Translation\LocaleFileRepository;
+use DigitalCoreHub\LaravelAiTranslator\Translation\LocaleScanner;
+use DigitalCoreHub\LaravelAiTranslator\Translation\PlaceholderGuard;
+use DigitalCoreHub\LaravelAiTranslator\Translation\Translator;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\ServiceProvider;
 
-/**
- * Bootstrap bindings and configuration for the AI translator package.
- * AI çeviri paketinin yapılandırmalarını ve servislerini kaydeder.
- */
 class AiTranslatorServiceProvider extends ServiceProvider
 {
-    /**
-     * Register bindings in the container.
-     * Servis konteynerine bağımlılıkları kaydeder.
-     */
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/ai-translator.php', 'ai-translator');
 
-        $this->app->singleton(TranslationProvider::class, function ($app) {
-            $provider = $app['config']->get('ai-translator.provider', 'openai');
+        $this->app->singleton(ProviderRegistry::class, fn ($app) => new ProviderRegistry(
+            $app,
+            (array) $app['config']->get('ai-translator.providers', [])
+        ));
 
-            return $this->makeProvider($provider);
-        });
+        $this->app->singleton(ProviderChain::class, function ($app) {
+            /** @var ConfigRepository $config */
+            $config = $app['config'];
 
-        $this->app->singleton('ai-translator.providers', function ($app) {
-            $providers = [];
-
-            foreach (array_keys($app['config']->get('ai-translator.providers', [])) as $name) {
-                $providers[$name] = $this->makeProvider($name);
-            }
-
-            return $providers;
+            return new ProviderChain(
+                registry: $app->make(ProviderRegistry::class),
+                order: $this->providerOrder($config),
+            );
         });
 
         $this->app->singleton(TranslationCache::class, function ($app) {
-            $config = $app['config']->get('ai-translator');
-            $driver = $config['cache_driver'] ?? $app['config']->get('cache.default');
+            /** @var ConfigRepository $config */
+            $config = $app['config'];
+            $store = $config->get('ai-translator.cache.store');
 
             return new TranslationCache(
-                repository: $app['cache']->store($driver),
-                enabled: (bool) ($config['cache_enabled'] ?? true)
+                repository: $app['cache']->store(is_string($store) && $store !== '' ? $store : null),
+                enabled: (bool) $config->get('ai-translator.cache.enabled', true),
+                ttl: $this->cacheTtl($config),
             );
         });
 
-        $this->app->singleton(TranslationManager::class, function ($app) {
-            $config = $app['config']->get('ai-translator');
+        $this->app->singleton(LocaleFileRepository::class, fn ($app) => new LocaleFileRepository(
+            filesystem: $app->make(Filesystem::class),
+            roots: $this->localeRoots($app['config']),
+        ));
 
-            return new TranslationManager(
-                providers: $app->make('ai-translator.providers'),
-                cache: $app->make(TranslationCache::class),
-                filesystem: $app['files'],
-                basePath: $app->basePath(),
-                paths: $config['paths'] ?? [base_path('lang')],
-                configuredProvider: $config['provider'] ?? 'openai',
-                autoCreateMissingFiles: $config['auto_create_missing_files'] ?? true,
-            );
-        });
+        $this->app->singleton(LocaleScanner::class, fn ($app) => new LocaleScanner(
+            files: $app->make(LocaleFileRepository::class),
+        ));
 
         $this->app->singleton(ReportStore::class, function ($app) {
-            return new ReportStore($app['files']);
-        });
+            /** @var ConfigRepository $config */
+            $config = $app['config'];
 
-        $this->app->singleton(QueueMonitor::class, function ($app) {
-            return new QueueMonitor($app['files']);
-        });
-
-        $this->app->singleton(OpenAIProvider::class, function ($app) {
-            return new OpenAIProvider(
-                config: $app['config']->get('ai-translator.providers.openai', [])
+            return new ReportStore(
+                filesystem: $app->make(Filesystem::class),
+                path: (string) $config->get('ai-translator.report.path', storage_path('logs/ai-translator-report.json')),
+                keep: (int) $config->get('ai-translator.report.keep', 50),
+                enabled: (bool) $config->get('ai-translator.report.enabled', true),
             );
         });
 
-        $this->app->singleton(DeepLProvider::class, function ($app) {
-            return new DeepLProvider(
-                config: $app['config']->get('ai-translator.providers.deepl', [])
-            );
-        });
+        $this->app->singleton(Translator::class, fn ($app) => new Translator(
+            scanner: $app->make(LocaleScanner::class),
+            files: $app->make(LocaleFileRepository::class),
+            chain: $app->make(ProviderChain::class),
+            cache: $app->make(TranslationCache::class),
+            guard: new PlaceholderGuard,
+            events: $app['events'],
+        ));
 
-        $this->app->singleton(GoogleProvider::class, function ($app) {
-            return new GoogleProvider(
-                config: $app['config']->get('ai-translator.providers.google', [])
-            );
-        });
-
-        $this->app->singleton(DeepSeekProvider::class, function ($app) {
-            return new DeepSeekProvider(
-                config: $app['config']->get('ai-translator.providers.deepseek', [])
-            );
-        });
+        $this->app->alias(Translator::class, 'ai-translator');
     }
 
-    /**
-     * Bootstrap any application services.
-     * Uygulama servislerini başlatır.
-     */
     public function boot(): void
     {
-        $this->publishes([
-            __DIR__.'/../config/ai-translator.php' => config_path('ai-translator.php'),
-        ], 'config');
-
-        $this->publishes([
-            __DIR__.'/../resources/views' => resource_path('views/vendor/ai-translator'),
-        ], 'views');
-
-        $this->loadViewsFrom(__DIR__.'/../resources/views', 'ai-translator');
-        $this->loadRoutesFrom(__DIR__.'/../routes/ai-translator.php');
-
-        $this->registerLivewireComponents();
-
-        Event::listen(AuthLoginEvent::class, static function (AuthLoginEvent $event): void {
-            if (! config('ai-translator.auth_enabled', true)) {
-                return;
-            }
-
-            $email = $event->user->email ?? 'unknown';
-
-            AiTranslatorLogger::info(sprintf('User %s logged in.', $email));
-        });
-
-        Event::listen(AuthLogoutEvent::class, static function (AuthLogoutEvent $event): void {
-            if (! config('ai-translator.auth_enabled', true)) {
-                return;
-            }
-
-            $email = $event->user?->email ?? 'unknown';
-
-            AiTranslatorLogger::info(sprintf('User %s logged out.', $email));
-        });
-
         if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__.'/../config/ai-translator.php' => config_path('ai-translator.php'),
+            ], 'ai-translator-config');
+
             $this->commands([
-                SyncCommand::class,
                 TranslateCommand::class,
+                StatusCommand::class,
+                CacheClearCommand::class,
                 WatchCommand::class,
             ]);
         }
     }
 
-    protected function registerLivewireComponents(): void
+    /**
+     * @return array<int, string>
+     */
+    protected function providerOrder(ConfigRepository $config): array
     {
-        if (! class_exists(\Livewire\Livewire::class)) {
-            return;
-        }
+        $primary = (string) $config->get('ai-translator.provider', 'openai');
+        $fallback = $config->get('ai-translator.fallback', []);
 
-        foreach ([
-            Dashboard::class,
-            EditTranslation::class,
-            QueueStatus::class,
-            Settings::class,
-            Logs::class,
-            SyncComponent::class,
-            WatchLogs::class,
-        ] as $component) {
-            \Livewire\Livewire::component(
-                $this->livewireComponentAlias($component),
-                $component
-            );
-        }
-    }
-
-    protected function livewireComponentAlias(string $component): string
-    {
-        $alias = str_replace('\\', '.', $component);
-        $alias = preg_replace('/(?<!^|\.)(?=[A-Z])/', '-', $alias) ?? $alias;
-
-        return strtolower($alias);
+        return array_values(array_unique(array_filter(
+            array_merge([$primary], is_array($fallback) ? $fallback : []),
+            static fn ($name) => is_string($name) && $name !== '',
+        )));
     }
 
     /**
-     * Resolve the configured translation provider class name.
-     * Yapılandırılan çeviri sağlayıcısının sınıf adını çözümler.
+     * Dil köklerini çözer. Config virgüllü string ya da dizi olabilir; göreli
+     * yollar base_path()'e göre mutlaklaştırılır.
+     *
+     * @return array<int, string>
      */
-    protected function resolveProviderClass(): string
+    protected function localeRoots(ConfigRepository $config): array
     {
-        $provider = $this->app['config']->get('ai-translator.provider', 'openai');
+        $paths = $config->get('ai-translator.paths', 'lang');
+        $segments = is_array($paths)
+            ? $paths
+            : explode(',', (string) $paths);
 
-        return match ($provider) {
-            'openai' => OpenAIProvider::class,
-            'deepl' => DeepLProvider::class,
-            'google' => GoogleProvider::class,
-            'deepseek' => DeepSeekProvider::class,
-            default => $provider,
-        };
-    }
+        $roots = [];
 
-    protected function makeProvider(string $name)
-    {
-        $config = $this->app['config']->get("ai-translator.providers.{$name}", []);
-        $class = $config['class'] ?? match ($name) {
-            'openai' => OpenAIProvider::class,
-            'deepl' => DeepLProvider::class,
-            'google' => GoogleProvider::class,
-            'deepseek' => DeepSeekProvider::class,
-            default => $name,
-        };
+        foreach ($segments as $segment) {
+            $segment = trim((string) $segment);
 
-        if (is_subclass_of($class, \DigitalCoreHub\LaravelAiTranslator\Providers\AbstractProvider::class)) {
-            return $this->app->make($class, ['config' => $config]);
+            if ($segment === '') {
+                continue;
+            }
+
+            $roots[] = str_starts_with($segment, '/') || preg_match('/^[A-Za-z]:[\\\\\/]/', $segment) === 1
+                ? $segment
+                : $this->app->basePath($segment);
         }
 
-        return $this->app->make($class);
+        return $roots === [] ? [$this->app->basePath('lang')] : $roots;
+    }
+
+    protected function cacheTtl(ConfigRepository $config): ?int
+    {
+        $ttl = $config->get('ai-translator.cache.ttl');
+
+        return $ttl === null ? null : max(0, (int) $ttl);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function provides(): array
+    {
+        return [
+            Translator::class,
+            'ai-translator',
+            ProviderChain::class,
+            ProviderRegistry::class,
+            TranslationCache::class,
+            LocaleFileRepository::class,
+            LocaleScanner::class,
+            ReportStore::class,
+        ];
     }
 }

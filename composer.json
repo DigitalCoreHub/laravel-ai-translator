@@ -1,31 +1,33 @@
 {
   "name": "digitalcorehub/laravel-ai-translator",
-  "description": "Laravel package that translates missing language keys using OpenAI.",
+  "description": "Find missing Laravel translation keys and fill them in with AI — OpenAI, DeepSeek, DeepL or Google Translate.",
+  "keywords": ["laravel", "translation", "i18n", "localization", "ai", "openai", "deepl"],
+  "homepage": "https://github.com/DigitalCoreHub/laravel-ai-translator",
   "type": "library",
   "license": "MIT",
   "require": {
     "php": "^8.3",
-    "illuminate/support": "^11.0|^12.0",
-    "illuminate/console": "^11.0|^12.0",
-    "illuminate/filesystem": "^11.0|^12.0",
-    "illuminate/cache": "^11.0|^12.0",
-    "illuminate/http": "^11.0|^12.0",
-    "openai-php/client": ">=0.10.0 <1.0.0"
+    "illuminate/console": "^12.0|^13.0",
+    "illuminate/contracts": "^12.0|^13.0",
+    "illuminate/filesystem": "^12.0|^13.0",
+    "illuminate/http": "^12.0|^13.0",
+    "illuminate/support": "^12.0|^13.0"
   },
   "require-dev": {
-    "orchestra/testbench": "^8.0|^9.0",
-    "pestphp/pest": "^2.0",
-    "pestphp/pest-plugin-laravel": "^2.4",
+    "laravel/pint": "^1.25",
     "mockery/mockery": "^1.6",
-    "laravel/pint": "^1.25"
+    "orchestra/testbench": "^10.0|^11.0",
+    "pestphp/pest": "^3.0|^4.0",
+    "pestphp/pest-plugin-laravel": "^3.0|^4.0",
+    "phpstan/phpstan": "^2.0"
+  },
+  "suggest": {
+    "digitalcorehub/laravel-toon": "Encodes LLM batch payloads as TOON tables instead of JSON (~40% fewer input tokens on large language files)."
   },
   "autoload": {
     "psr-4": {
       "DigitalCoreHub\\LaravelAiTranslator\\": "src/"
-    },
-    "files": [
-      "src/Support/livewire-stubs.php"
-    ]
+    }
   },
   "autoload-dev": {
     "psr-4": {
@@ -36,16 +38,25 @@
     "laravel": {
       "providers": [
         "DigitalCoreHub\\LaravelAiTranslator\\AiTranslatorServiceProvider"
-      ]
+      ],
+      "aliases": {
+        "AiTranslator": "DigitalCoreHub\\LaravelAiTranslator\\Facades\\AiTranslator"
+      }
     }
   },
   "scripts": {
-    "test": "vendor/bin/pest"
+    "test": "pest",
+    "lint": "pint --test",
+    "format": "pint",
+    "analyse": "phpstan analyse"
   },
   "config": {
+    "sort-packages": true,
     "allow-plugins": {
       "pestphp/pest-plugin": true,
       "php-http/discovery": true
     }
-  }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
 }

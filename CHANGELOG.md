@@ -2,6 +2,60 @@
 
 All notable changes to `laravel-ai-translator` will be documented in this file.
 
+## [1.0.0] - 2026-08-08
+
+A rewrite. See [UPGRADE.md](UPGRADE.md) for the migration path.
+
+### Fixed
+- **PHP language files were being corrupted on write.** The old writer ran
+  `str_replace(['array (', ')'], ['[', ']'])` over `var_export()` output, which also replaced
+  parentheses inside translation strings — `'Save (required)'` was written as `'Save (required]'`.
+  Replaced with a purpose-built exporter, covered by regression tests.
+- **`ai:sync` and the queue path wrote to the wrong locations.** Relative paths were produced
+  against the language root but resolved against the project root. Path resolution now lives in
+  one place and is guarded against escaping the language root.
+- **Clearing the translation cache flushed the entire application cache.** Cache entries are now
+  namespaced and invalidated by version bump; nothing else is touched.
+- **Queue configuration was ignored** — jobs went to the `default` queue regardless of
+  `queue_name`/`queue_connection`.
+- **Failed placeholder restoration silently wrote untranslated source text** into the target
+  file. Such keys are now reported as failures and left unwritten.
+- **DeepL paid API keys never worked** — every request went to the free endpoint.
+- **`DeepSeekProvider` called `env()` at runtime**, breaking after `config:cache`.
+- **The test suite never ran** — `phpunit.xml` was missing.
+
+### Added
+- Batch translation: keys are sent in provider-sized batches instead of one request per key.
+- Per-key fallback — a second provider is only asked for the keys still outstanding.
+- Retry with exponential backoff on 429/5xx, honouring `Retry-After`.
+- `ai:translate:status` with `--json` and `--fail-on-missing` for CI gating.
+- `AiTranslator` facade with a fluent, immutable API.
+- Events: `TranslationRunStarted`, `FileTranslated`, `KeyTranslationFailed`,
+  `TranslationRunCompleted`.
+- `null` provider for offline dry runs and testing.
+- Optional TOON encoding of LLM batch payloads via `digitalcorehub/laravel-toon`.
+- `--only` filter, `instructions` config for project-specific translation rules.
+- Atomic file writes; key order follows the source file.
+- CI matrix across PHP 8.3/8.4 × Laravel 12/13, plus Pint and PHPStan level 6.
+
+### Changed
+- Requires PHP 8.3+ and Laravel 12 or 13.
+- `openai-php/client` dropped; all providers use `Illuminate\Http`.
+- `ai:sync` merged into `ai:translate --queue`.
+- `ai:translate --cache-clear` split out as `ai:translate:cache-clear`.
+- `ai:translate` exits non-zero when keys fail to translate.
+- Config restructured into nested groups (`cache.*`, `queue.*`, `watch.*`, `report.*`).
+- Custom providers now implement `translateBatch()`.
+
+### Removed
+- The Livewire/Volt web panel, its routes, middleware and views — returning as a separate
+  `laravel-ai-translator-ui` package.
+- `src/Support/livewire-stubs.php`, which injected fake `Livewire\Component` classes into
+  consuming applications through `autoload.files`.
+- The auto-registered `POST /api/translate` route and its Sanctum assumption.
+- `authorized_emails` config, whose default allowed only two `@digitalcorehub.com` addresses.
+- `QueueMonitor` (dead code) and `AiTranslatorLogger` (replaced by a configurable log channel).
+
 ## [0.6.0] - 2025-12-09
 ### Added
 - **Watch Mode** (`php artisan ai:watch`) — monitors `lang/` and `resources/lang/` directories for PHP/JSON file changes and automatically dispatches `ProcessTranslationJob` to the queue
